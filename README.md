@@ -17,33 +17,24 @@ API REST del trabajo práctico de **Desarrollo de Software** (UTN). Gestiona usu
 
 ## Stack tecnológico
 
-| Herramienta             | Uso                                                      |
-| ----------------------- | -------------------------------------------------------- |
-| Node.js 22 + TypeScript | Runtime y lenguaje                                       |
-| Express 5               | Framework web (API REST)                                 |
-| PostgreSQL 16           | Base de datos relacional                                 |
-| Prisma 7                | ORM: esquema, migraciones y cliente tipado               |
-| Zod                     | Validación de datos de entrada y de variables de entorno |
-| Vitest + Supertest      | Tests unitarios y de integración                         |
-| ESLint + Prettier       | Estilo y calidad de código                               |
-| Docker + Docker Compose | Entorno de desarrollo local (API + base de datos)        |
+- Node.js 22 + TypeScript
+- Express 5
+- PostgreSQL 16
+- Prisma 7
+- Zod
+- Vitest + Supertest
+- ESLint + Prettier
+- Docker + Docker Compose
 
 ## Instalación y ejecución local (Docker)
 
-Es la forma recomendada: levanta la API y la base de datos con un solo comando, sin instalar PostgreSQL.
+Para agilizar el desarrollo: levanta la API y la base de datos con un solo comando, sin instalar PostgreSQL.
 
 ### Requisitos previos
 
 - [Git](https://git-scm.com/downloads)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows / macOS) o Docker Engine + Docker Compose (Linux)
-- Opcional: [Node.js 22](https://nodejs.org/) (para autocompletado en el editor, correr tests o lint localmente)
-
-Verificá que Docker esté funcionando:
-
-```bash
-docker --version
-docker compose version
-```
+- Opcional: [Node.js 22](https://nodejs.org/)
 
 ### Paso a paso
 
@@ -59,8 +50,6 @@ cd dsw-api
 ```bash
 cp .env.example .env
 ```
-
-En Windows (PowerShell): `Copy-Item .env.example .env`. Los valores por defecto sirven para desarrollo, no hace falta cambiarlos.
 
 **3. Levantar la aplicación**
 
