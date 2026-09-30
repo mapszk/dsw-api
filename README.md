@@ -1,6 +1,6 @@
 # DSW API: gestión de reservas de estacionamiento
 
-API REST del trabajo práctico de **Desarrollo de Software** (UTN). Gestiona usuarios, playas de estacionamiento, cocheras, clientes, tarifas, reservas y pagos.
+API REST del trabajo práctico de **Desarrollo de Software** (UTN). Gestiona usuarios (administradores y clientes), playas de estacionamiento, cocheras, tarifas, reservas y pagos.
 
 - Propuesta del TP: [tp-dsw/proposal.md](https://github.com/mapszk/tp-dsw/blob/main/proposal.md)
 - Frontend: [mapszk/dsw-frontend](https://github.com/mapszk/dsw-frontend)
@@ -65,11 +65,12 @@ Esto construye la imagen de la API, levanta PostgreSQL, espera a que la base est
 docker compose exec api npm run db:seed
 ```
 
-Crea tipos de vehículo, tipos de estadía, tarifas, una playa con cocheras y un usuario administrador:
+Crea tipos de vehículo, tipos de estadía, tarifas, una playa con cocheras y dos usuarios de prueba:
 
-| Email           | Contraseña | Rol   |
-| --------------- | ---------- | ----- |
-| `admin@dsw.com` | `admin123` | ADMIN |
+| Email             | Contraseña | Rol     |
+| ----------------- | ---------- | ------- |
+| `admin@dsw.com`   | `dsw12345` | ADMIN   |
+| `cliente@dsw.com` | `dsw12345` | CLIENTE |
 
 **5. Verificar que funciona**
 
@@ -90,7 +91,7 @@ docker compose down -v       # detener y BORRAR la base de datos
 ### Problemas frecuentes
 
 - **Puerto ocupado (3000 o 5432):** cambiá `PORT` o `POSTGRES_PORT` en `.env` y volvé a correr `docker compose up -d`.
-- **Instalé una dependencia nueva:** reconstruí la imagen con `docker compose up -d --build`.
+- **Instalé una dependencia nueva o cambió `package.json`:** reconstruí la imagen con `docker compose up -d --build -V` (`-V` recrea el volumen de `node_modules`).
 - **El hot reload no detecta cambios (Windows / macOS):** reiniciá la API con `docker compose restart api`.
 - **Quiero empezar con la base limpia:** `docker compose down -v && docker compose up -d --build` y volvé a correr el seed.
 

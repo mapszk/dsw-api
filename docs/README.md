@@ -14,63 +14,67 @@ Punto de entrada de la documentación del backend, según los requisitos de la c
 
 ## Modelo de datos
 
+DER corregido por la cátedra. Diferencias en la implementación:
+
+- `Usuario.rol` (`ADMIN` | `CLIENTE`): necesario para los 2 niveles de acceso.
+- `TipoEstadia.duracionMinutos`: necesario para calcular el precio total de la reserva.
+- `Usuario` - `Reserva` es 0..N del lado de la reserva (un administrador no tiene reservas).
+
 ```mermaid
 erDiagram
-    CLIENTE ||--o{ RESERVA : realiza
-    COCHERA ||--o{ RESERVA : ocupa
-    TIPO_VEHICULO ||--o{ RESERVA : usa
-    TIPO_ESTADIA ||--o{ RESERVA : usa
-    RESERVA ||--o| PAGO : registra
-    PLAYA ||--|{ COCHERA : contiene
-    TIPO_VEHICULO ||--o{ TARIFA : aplica
-    TIPO_ESTADIA ||--o{ TARIFA : aplica
+    USUARIO ||--o{ RESERVA : "pertenece"
+    COCHERA ||--o{ RESERVA : "ocupa"
+    TIPO_VEHICULO ||--o{ RESERVA : "usa"
+    TIPO_ESTADIA ||--o{ RESERVA : "usa"
+    RESERVA ||--o| PAGO : "registra"
+    PLAYA ||--|{ COCHERA : "pertenece"
+    TIPO_VEHICULO ||--o{ TARIFA : "tiene"
+    TIPO_ESTADIA ||--o{ TARIFA : "tiene"
 
     USUARIO {
-        int id
-        string email
+        int id PK
+        string nombre
+        string telefono
+        string dni UK
+        string email UK
         string password
         enum rol
     }
-    CLIENTE {
-        int id
-        string nombre
-        string telefono
-        string dni
-    }
     RESERVA {
-        int id
+        int id PK
         string patente
         datetime fechaInicio
         datetime fechaFin
-        decimal precioUnitario
         decimal precioTotal
         enum estado
     }
     PAGO {
-        int id
+        int id PK
         datetime fecha
         enum metodo
         decimal monto
     }
     COCHERA {
-        int id
+        int id PK
         boolean techada
+        enum estado
     }
     PLAYA {
-        int id
-        string sector
+        int id PK
+        string sector UK
     }
     TIPO_VEHICULO {
-        int id
-        string tipo
-        decimal ajuste
+        int id PK
+        string tipo UK
     }
     TIPO_ESTADIA {
-        int id
-        string tipo
+        int id PK
+        string tipo UK
+        int duracionMinutos
     }
     TARIFA {
-        int id
-        decimal precio
+        int id PK
+        datetime fechaDesde
+        decimal valor
     }
 ```

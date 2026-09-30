@@ -1,8 +1,11 @@
 -- CreateEnum
-CREATE TYPE "Rol" AS ENUM ('ADMIN', 'OPERADOR');
+CREATE TYPE "Rol" AS ENUM ('ADMIN', 'CLIENTE');
 
 -- CreateEnum
 CREATE TYPE "EstadoReserva" AS ENUM ('PENDIENTE', 'ACTIVA', 'FINALIZADA', 'CANCELADA');
+
+-- CreateEnum
+CREATE TYPE "EstadoCochera" AS ENUM ('DISPONIBLE', 'OCUPADA', 'INHABILITADA');
 
 -- CreateEnum
 CREATE TYPE "MetodoPago" AS ENUM ('EFECTIVO', 'TARJETA', 'TRANSFERENCIA');
@@ -10,9 +13,12 @@ CREATE TYPE "MetodoPago" AS ENUM ('EFECTIVO', 'TARJETA', 'TRANSFERENCIA');
 -- CreateTable
 CREATE TABLE "usuarios" (
     "id" SERIAL NOT NULL,
+    "nombre" TEXT NOT NULL,
+    "telefono" TEXT,
+    "dni" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
-    "rol" "Rol" NOT NULL DEFAULT 'OPERADOR',
+    "rol" "Rol" NOT NULL DEFAULT 'CLIENTE',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -20,22 +26,9 @@ CREATE TABLE "usuarios" (
 );
 
 -- CreateTable
-CREATE TABLE "clientes" (
-    "id" SERIAL NOT NULL,
-    "nombre" TEXT NOT NULL,
-    "telefono" TEXT,
-    "dni" TEXT NOT NULL,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "clientes_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "tipos_vehiculo" (
     "id" SERIAL NOT NULL,
     "tipo" TEXT NOT NULL,
-    "ajuste" DECIMAL(5,2) NOT NULL DEFAULT 1,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -46,6 +39,7 @@ CREATE TABLE "tipos_vehiculo" (
 CREATE TABLE "tipos_estadia" (
     "id" SERIAL NOT NULL,
     "tipo" TEXT NOT NULL,
+    "duracion_minutos" INTEGER NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -55,7 +49,8 @@ CREATE TABLE "tipos_estadia" (
 -- CreateTable
 CREATE TABLE "tarifas" (
     "id" SERIAL NOT NULL,
-    "precio" DECIMAL(10,2) NOT NULL,
+    "valor" DECIMAL(10,2) NOT NULL,
+    "fecha_desde" TIMESTAMP(3) NOT NULL,
     "tipo_vehiculo_id" INTEGER NOT NULL,
     "tipo_estadia_id" INTEGER NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -78,6 +73,7 @@ CREATE TABLE "playas" (
 CREATE TABLE "cocheras" (
     "id" SERIAL NOT NULL,
     "techada" BOOLEAN NOT NULL DEFAULT false,
+    "estado" "EstadoCochera" NOT NULL DEFAULT 'DISPONIBLE',
     "playa_id" INTEGER NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -91,10 +87,9 @@ CREATE TABLE "reservas" (
     "patente" TEXT NOT NULL,
     "fecha_inicio" TIMESTAMP(3) NOT NULL,
     "fecha_fin" TIMESTAMP(3) NOT NULL,
-    "precio_unitario" DECIMAL(10,2) NOT NULL,
     "precio_total" DECIMAL(10,2) NOT NULL,
     "estado" "EstadoReserva" NOT NULL DEFAULT 'PENDIENTE',
-    "cliente_id" INTEGER NOT NULL,
+    "usuario_id" INTEGER NOT NULL,
     "cochera_id" INTEGER NOT NULL,
     "tipo_vehiculo_id" INTEGER NOT NULL,
     "tipo_estadia_id" INTEGER NOT NULL,
@@ -118,10 +113,10 @@ CREATE TABLE "pagos" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");
+CREATE UNIQUE INDEX "usuarios_dni_key" ON "usuarios"("dni");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "clientes_dni_key" ON "clientes"("dni");
+CREATE UNIQUE INDEX "usuarios_email_key" ON "usuarios"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "tipos_vehiculo_tipo_key" ON "tipos_vehiculo"("tipo");
@@ -130,13 +125,16 @@ CREATE UNIQUE INDEX "tipos_vehiculo_tipo_key" ON "tipos_vehiculo"("tipo");
 CREATE UNIQUE INDEX "tipos_estadia_tipo_key" ON "tipos_estadia"("tipo");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "tarifas_tipo_vehiculo_id_tipo_estadia_id_key" ON "tarifas"("tipo_vehiculo_id", "tipo_estadia_id");
+CREATE UNIQUE INDEX "tarifas_tipo_vehiculo_id_tipo_estadia_id_fecha_desde_key" ON "tarifas"("tipo_vehiculo_id", "tipo_estadia_id", "fecha_desde");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "playas_sector_key" ON "playas"("sector");
 
 -- CreateIndex
 CREATE INDEX "reservas_cochera_id_fecha_inicio_fecha_fin_idx" ON "reservas"("cochera_id", "fecha_inicio", "fecha_fin");
+
+-- CreateIndex
+CREATE INDEX "reservas_usuario_id_idx" ON "reservas"("usuario_id");
 
 -- CreateIndex
 CREATE INDEX "reservas_estado_idx" ON "reservas"("estado");
@@ -154,7 +152,7 @@ ALTER TABLE "tarifas" ADD CONSTRAINT "tarifas_tipo_estadia_id_fkey" FOREIGN KEY 
 ALTER TABLE "cocheras" ADD CONSTRAINT "cocheras_playa_id_fkey" FOREIGN KEY ("playa_id") REFERENCES "playas"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "reservas" ADD CONSTRAINT "reservas_cliente_id_fkey" FOREIGN KEY ("cliente_id") REFERENCES "clientes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "reservas" ADD CONSTRAINT "reservas_usuario_id_fkey" FOREIGN KEY ("usuario_id") REFERENCES "usuarios"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "reservas" ADD CONSTRAINT "reservas_cochera_id_fkey" FOREIGN KEY ("cochera_id") REFERENCES "cocheras"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -167,3 +165,4 @@ ALTER TABLE "reservas" ADD CONSTRAINT "reservas_tipo_estadia_id_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "pagos" ADD CONSTRAINT "pagos_reserva_id_fkey" FOREIGN KEY ("reserva_id") REFERENCES "reservas"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
