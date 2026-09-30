@@ -1,0 +1,49 @@
+# Dependencias
+node_modules/
+
+# Build y artefactos
+dist/
+coverage/
+src/generated/
+*.tsbuildinfo
+
+# Variables de entorno
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Asistentes de IA
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+AGENTS.md
+GEMINI.md
+.gemini/
+.cursor/
+.cursorrules
+.cursorignore
+.windsurf/
+.windsurfrules
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
+.aider*
+.codex/
+.continue/
+.clinerules
+.roo/
+.kiro/
+.junie/
+.mcp.json
