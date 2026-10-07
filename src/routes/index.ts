@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
+import { tipoEstadiaRouter } from '../modules/tipo-estadia/tipo-estadia.routes.js';
 
 export const router = Router();
 
@@ -8,5 +9,4 @@ router.get('/health', async (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Registrar aca los routers de cada modulo, por ejemplo:
-// router.use('/playas', playaRouter);
+router.use('/tipos-estadia', tipoEstadiaRouter);
