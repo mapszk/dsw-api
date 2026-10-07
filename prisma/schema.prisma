@@ -1,0 +1,152 @@
+// Modelo de datos basado en el DER corregido por la catedra (docs/README.md).
+// Nombres de modelos y campos en español, tablas en snake_case.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Rol {
+  ADMIN
+  CLIENTE
+}
+
+enum EstadoReserva {
+  PENDIENTE
+  ACTIVA
+  FINALIZADA
+  CANCELADA
+}
+
+enum EstadoCochera {
+  DISPONIBLE
+  OCUPADA
+  INHABILITADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+}
+
+model Usuario {
+  id        Int       @id @default(autoincrement())
+  nombre    String
+  telefono  String?
+  dni       String    @unique
+  email     String    @unique
+  password  String // hash, nunca texto plano
+  rol       Rol       @default(CLIENTE)
+  reservas  Reserva[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("usuarios")
+}
+
+model TipoVehiculo {
+  id        Int       @id @default(autoincrement())
+  tipo      String    @unique
+  tarifas   Tarifa[]
+  reservas  Reserva[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("tipos_vehiculo")
+}
+
+model TipoEstadia {
+  id              Int       @id @default(autoincrement())
+  tipo            String    @unique // ej: HORA, DIA, MES
+  // No esta en el DER: necesario para calcular el precio total de la reserva
+  duracionMinutos Int       @map("duracion_minutos")
+  tarifas         Tarifa[]
+  reservas        Reserva[]
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("tipos_estadia")
+}
+
+// Relacion ternaria TipoEstadia - TipoVehiculo con historial de precios:
+// la tarifa vigente es la de mayor fechaDesde <= fecha de referencia.
+model Tarifa {
+  id             Int          @id @default(autoincrement())
+  valor          Decimal      @db.Decimal(10, 2)
+  fechaDesde     DateTime     @map("fecha_desde")
+  tipoVehiculoId Int          @map("tipo_vehiculo_id")
+  tipoVehiculo   TipoVehiculo @relation(fields: [tipoVehiculoId], references: [id])
+  tipoEstadiaId  Int          @map("tipo_estadia_id")
+  tipoEstadia    TipoEstadia  @relation(fields: [tipoEstadiaId], references: [id])
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@unique([tipoVehiculoId, tipoEstadiaId, fechaDesde])
+  @@map("tarifas")
+}
+
+model Playa {
+  id        Int       @id @default(autoincrement())
+  sector    String    @unique
+  cocheras  Cochera[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("playas")
+}
+
+model Cochera {
+  id        Int           @id @default(autoincrement())
+  techada   Boolean       @default(false)
+  estado    EstadoCochera @default(DISPONIBLE)
+  playaId   Int           @map("playa_id")
+  playa     Playa         @relation(fields: [playaId], references: [id])
+  reservas  Reserva[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("cocheras")
+}
+
+model Reserva {
+  id             Int           @id @default(autoincrement())
+  patente        String
+  fechaInicio    DateTime      @map("fecha_inicio")
+  fechaFin       DateTime      @map("fecha_fin")
+  precioTotal    Decimal       @map("precio_total") @db.Decimal(10, 2)
+  estado         EstadoReserva @default(PENDIENTE)
+  usuarioId      Int           @map("usuario_id")
+  usuario        Usuario       @relation(fields: [usuarioId], references: [id])
+  cocheraId      Int           @map("cochera_id")
+  cochera        Cochera       @relation(fields: [cocheraId], references: [id])
+  tipoVehiculoId Int           @map("tipo_vehiculo_id")
+  tipoVehiculo   TipoVehiculo  @relation(fields: [tipoVehiculoId], references: [id])
+  tipoEstadiaId  Int           @map("tipo_estadia_id")
+  tipoEstadia    TipoEstadia   @relation(fields: [tipoEstadiaId], references: [id])
+  pago           Pago?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@index([cocheraId, fechaInicio, fechaFin])
+  @@index([usuarioId])
+  @@index([estado])
+  @@map("reservas")
+}
+
+model Pago {
+  id        Int        @id @default(autoincrement())
+  fecha     DateTime   @default(now())
+  metodo    MetodoPago
+  monto     Decimal    @db.Decimal(10, 2)
+  reservaId Int        @unique @map("reserva_id")
+  reserva   Reserva    @relation(fields: [reservaId], references: [id])
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("pagos")
+}
