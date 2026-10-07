@@ -15,6 +15,8 @@ const include = {
   pago: true,
 } satisfies Prisma.ReservaInclude;
 
+export type ReservaConRelaciones = Prisma.ReservaGetPayload<{ include: typeof include }>;
+
 const ESTADOS_QUE_OCUPAN: EstadoReserva[] = [EstadoReserva.PENDIENTE, EstadoReserva.ACTIVA];
 const ESTADOS_ELIMINABLES: EstadoReserva[] = [EstadoReserva.PENDIENTE, EstadoReserva.CANCELADA];
 

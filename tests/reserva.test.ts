@@ -52,7 +52,18 @@ describe('POST /api/reservas', () => {
     tx.tipoVehiculo.findUnique.mockResolvedValue({ id: 1 });
     tx.reserva.findFirst.mockResolvedValue(null);
     tx.tarifa.findFirst.mockResolvedValue({ valor: new Prisma.Decimal(1000) });
-    tx.reserva.create.mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data }));
+    tx.reserva.create.mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: 1,
+        ...data,
+        estado: 'PENDIENTE',
+        usuario: { id: 1, nombre: 'Cliente', dni: '1', email: 'c@dsw.com', telefono: null },
+        cochera: { id: 1, techada: true, estado: 'DISPONIBLE', playa: { id: 1, sector: 'A' } },
+        tipoVehiculo: { id: 1, tipo: 'AUTO' },
+        tipoEstadia: { id: 1, tipo: 'HORA', duracionMinutos: 60 },
+        pago: null,
+      }),
+    );
   });
 
   it('crea la reserva con el precio calculado y la patente normalizada', async () => {
@@ -60,7 +71,8 @@ describe('POST /api/reservas', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.patente).toBe('AB123CD');
-    expect(res.body.precioTotal).toBe('3000');
+    expect(res.body.precioTotal).toBe(3000);
+    expect(res.body.usuario).not.toHaveProperty('password');
   });
 
   it('responde 409 si la cochera ya esta reservada en ese horario', async () => {
