@@ -8,6 +8,7 @@ import {
   actualizarReservaSchema,
   crearReservaSchema,
   listarReservasQuerySchema,
+  reprogramarReservaSchema,
 } from './reserva.schema.js';
 
 export const reservaRouter = Router();
@@ -22,6 +23,12 @@ reservaRouter.patch(
   '/:id',
   validate({ params: idParamSchema, body: actualizarReservaSchema }),
   reservaController.actualizar,
+);
+// CU3: el cliente puede reprogramar sus reservas; ADMIN, cualquiera
+reservaRouter.post(
+  '/:id/reprogramar',
+  validate({ params: idParamSchema, body: reprogramarReservaSchema }),
+  reservaController.reprogramar,
 );
 reservaRouter.delete(
   '/:id',

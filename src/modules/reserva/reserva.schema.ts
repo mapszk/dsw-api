@@ -28,6 +28,16 @@ export const crearReservaSchema = z
 // Fechas, cochera y tipos cambian el precio y la disponibilidad: se modifican con los casos de uso
 export const actualizarReservaSchema = z.object({ patente });
 
+export const reprogramarReservaSchema = z
+  .object({
+    fechaInicio: z.coerce.date(),
+    fechaFin: z.coerce.date(),
+  })
+  .refine((data) => data.fechaFin > data.fechaInicio, {
+    message: 'La fecha de fin debe ser posterior a la de inicio',
+    path: ['fechaFin'],
+  });
+
 export const listarReservasQuerySchema = z.object({
   estado: z.enum(EstadoReserva).optional(),
   usuarioId: z.coerce.number().int().positive().optional(),
@@ -36,4 +46,5 @@ export const listarReservasQuerySchema = z.object({
 
 export type CrearReservaInput = z.infer<typeof crearReservaSchema>;
 export type ActualizarReservaInput = z.infer<typeof actualizarReservaSchema>;
+export type ReprogramarReservaInput = z.infer<typeof reprogramarReservaSchema>;
 export type ListarReservasQuery = z.infer<typeof listarReservasQuerySchema>;
