@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
+import { reservaRouter } from '../modules/reserva/reserva.routes.js';
 import { tipoEstadiaRouter } from '../modules/tipo-estadia/tipo-estadia.routes.js';
 
 export const router = Router();
@@ -10,3 +11,4 @@ router.get('/health', async (_req, res) => {
 });
 
 router.use('/tipos-estadia', tipoEstadiaRouter);
+router.use('/reservas', reservaRouter);
