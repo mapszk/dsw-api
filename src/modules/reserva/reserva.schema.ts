@@ -14,7 +14,8 @@ export const crearReservaSchema = z
     patente,
     fechaInicio: z.coerce.date(),
     fechaFin: z.coerce.date(),
-    usuarioId: id,
+    // Obligatorio para ADMIN; si reserva un CLIENTE se usa el usuario logueado
+    usuarioId: id.optional(),
     cocheraId: id,
     tipoVehiculoId: id,
     tipoEstadiaId: id,

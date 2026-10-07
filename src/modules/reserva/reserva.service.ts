@@ -1,5 +1,6 @@
 import { EstadoCochera, EstadoReserva, Prisma, Rol } from '../../generated/prisma/client.js';
 import { prisma } from '../../lib/prisma.js';
+import type { UsuarioAutenticado } from '../../middlewares/auth.js';
 import { HttpError } from '../../utils/http-error.js';
 import type {
   ActualizarReservaInput,
@@ -33,21 +34,34 @@ export function calcularPrecio(
   return valor.mul(unidades);
 }
 
-export function listar(filtros: ListarReservasQuery) {
+/** Un CLIENTE solo puede ver y operar sus propias reservas: devuelve su id para filtrar */
+function soloPropias(solicitante: UsuarioAutenticado) {
+  return solicitante.rol === Rol.CLIENTE ? solicitante.id : undefined;
+}
+
+export function listar(filtros: ListarReservasQuery, solicitante: UsuarioAutenticado) {
   return prisma.reserva.findMany({
-    where: filtros,
+    where: { ...filtros, usuarioId: soloPropias(solicitante) ?? filtros.usuarioId },
     include,
     orderBy: { fechaInicio: 'desc' },
   });
 }
 
-export async function obtener(id: number) {
+export async function obtener(id: number, solicitante?: UsuarioAutenticado) {
   const reserva = await prisma.reserva.findUnique({ where: { id }, include });
-  if (!reserva) throw HttpError.notFound('Reserva no encontrada');
+  const propietario = solicitante && soloPropias(solicitante);
+  // 404 y no 403 para no revelar que existe una reserva de otro cliente
+  if (!reserva || (propietario !== undefined && reserva.usuarioId !== propietario)) {
+    throw HttpError.notFound('Reserva no encontrada');
+  }
   return reserva;
 }
 
-export async function crear(data: CrearReservaInput) {
+export async function crear(input: CrearReservaInput, solicitante: UsuarioAutenticado) {
+  const usuarioId = soloPropias(solicitante) ?? input.usuarioId;
+  if (!usuarioId) throw HttpError.badRequest('Debe indicar el usuario de la reserva');
+  const data = { ...input, usuarioId };
+
   if (data.fechaInicio < new Date()) {
     throw HttpError.badRequest('La fecha de inicio no puede estar en el pasado');
   }
@@ -118,8 +132,12 @@ export async function crear(data: CrearReservaInput) {
   );
 }
 
-export async function actualizar(id: number, data: ActualizarReservaInput) {
-  const reserva = await obtener(id);
+export async function actualizar(
+  id: number,
+  data: ActualizarReservaInput,
+  solicitante: UsuarioAutenticado,
+) {
+  const reserva = await obtener(id, solicitante);
   if (reserva.estado !== EstadoReserva.PENDIENTE) {
     throw HttpError.conflict('Solo se pueden modificar reservas pendientes');
   }
