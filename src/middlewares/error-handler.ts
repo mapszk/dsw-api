@@ -33,6 +33,13 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     }
   }
 
+  if (esConflictoDeTransaccion(err)) {
+    res.status(409).json({
+      error: { message: 'Otra operacion modifico los mismos datos, intente nuevamente' },
+    });
+    return;
+  }
+
   if (err instanceof SyntaxError && 'body' in err) {
     res.status(400).json({ error: { message: 'JSON mal formado' } });
     return;
@@ -45,4 +52,14 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
       details: env.NODE_ENV === 'development' && err instanceof Error ? err.message : undefined,
     },
   });
+}
+
+/**
+ * Transaccion Serializable abortada por otra concurrente. Prisma la informa como P2034,
+ * pero si falla en el COMMIT el driver adapter la lanza sin envolver (codigo Postgres 40001).
+ */
+function esConflictoDeTransaccion(err: unknown) {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) return err.code === 'P2034';
+  const cause = err instanceof Error ? (err.cause as { kind?: string } | undefined) : undefined;
+  return cause?.kind === 'TransactionWriteConflict';
 }
