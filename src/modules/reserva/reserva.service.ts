@@ -50,67 +50,70 @@ export async function crear(data: CrearReservaInput) {
     throw HttpError.badRequest('La fecha de inicio no puede estar en el pasado');
   }
 
-  return prisma.$transaction(async (tx) => {
-    // Bloquea la cochera hasta terminar, para que dos reservas simultaneas no se solapen
-    const [cochera] = await tx.$queryRaw<{ estado: EstadoCochera }[]>`
-      SELECT estado FROM cocheras WHERE id = ${data.cocheraId} FOR UPDATE`;
-    if (!cochera) throw HttpError.notFound('Cochera no encontrada');
-    if (cochera.estado === EstadoCochera.INHABILITADA) {
-      throw HttpError.conflict('La cochera esta inhabilitada');
-    }
+  // Serializable: si dos reservas simultaneas pasan el control de solapamiento,
+  // Postgres aborta una de las dos (P2034) en lugar de guardar ambas
+  return prisma.$transaction(
+    async (tx) => {
+      const cochera = await tx.cochera.findUnique({ where: { id: data.cocheraId } });
+      if (!cochera) throw HttpError.notFound('Cochera no encontrada');
+      if (cochera.estado === EstadoCochera.INHABILITADA) {
+        throw HttpError.conflict('La cochera esta inhabilitada');
+      }
 
-    const usuario = await tx.usuario.findUnique({ where: { id: data.usuarioId } });
-    if (!usuario) throw HttpError.notFound('Usuario no encontrado');
-    if (usuario.rol !== Rol.CLIENTE) {
-      throw HttpError.badRequest('Las reservas solo pueden pertenecer a un cliente');
-    }
+      const usuario = await tx.usuario.findUnique({ where: { id: data.usuarioId } });
+      if (!usuario) throw HttpError.notFound('Usuario no encontrado');
+      if (usuario.rol !== Rol.CLIENTE) {
+        throw HttpError.badRequest('Las reservas solo pueden pertenecer a un cliente');
+      }
 
-    const tipoEstadia = await tx.tipoEstadia.findUnique({ where: { id: data.tipoEstadiaId } });
-    if (!tipoEstadia) throw HttpError.notFound('Tipo de estadia no encontrado');
+      const tipoEstadia = await tx.tipoEstadia.findUnique({ where: { id: data.tipoEstadiaId } });
+      if (!tipoEstadia) throw HttpError.notFound('Tipo de estadia no encontrado');
 
-    const tipoVehiculo = await tx.tipoVehiculo.findUnique({ where: { id: data.tipoVehiculoId } });
-    if (!tipoVehiculo) throw HttpError.notFound('Tipo de vehiculo no encontrado');
+      const tipoVehiculo = await tx.tipoVehiculo.findUnique({ where: { id: data.tipoVehiculoId } });
+      if (!tipoVehiculo) throw HttpError.notFound('Tipo de vehiculo no encontrado');
 
-    const solapada = await tx.reserva.findFirst({
-      where: {
-        cocheraId: data.cocheraId,
-        estado: { in: ESTADOS_QUE_OCUPAN },
-        fechaInicio: { lt: data.fechaFin },
-        fechaFin: { gt: data.fechaInicio },
-      },
-    });
-    if (solapada) {
-      throw HttpError.conflict('La cochera ya esta reservada en ese horario', {
-        reservaId: solapada.id,
+      const solapada = await tx.reserva.findFirst({
+        where: {
+          cocheraId: data.cocheraId,
+          estado: { in: ESTADOS_QUE_OCUPAN },
+          fechaInicio: { lt: data.fechaFin },
+          fechaFin: { gt: data.fechaInicio },
+        },
       });
-    }
+      if (solapada) {
+        throw HttpError.conflict('La cochera ya esta reservada en ese horario', {
+          reservaId: solapada.id,
+        });
+      }
 
-    // Tarifa vigente: la ultima que empezo a regir antes del inicio de la reserva
-    const tarifa = await tx.tarifa.findFirst({
-      where: {
-        tipoVehiculoId: data.tipoVehiculoId,
-        tipoEstadiaId: data.tipoEstadiaId,
-        fechaDesde: { lte: data.fechaInicio },
-      },
-      orderBy: { fechaDesde: 'desc' },
-    });
-    if (!tarifa) {
-      throw HttpError.conflict('No hay tarifa vigente para ese tipo de vehiculo y estadia');
-    }
+      // Tarifa vigente: la ultima que empezo a regir antes del inicio de la reserva
+      const tarifa = await tx.tarifa.findFirst({
+        where: {
+          tipoVehiculoId: data.tipoVehiculoId,
+          tipoEstadiaId: data.tipoEstadiaId,
+          fechaDesde: { lte: data.fechaInicio },
+        },
+        orderBy: { fechaDesde: 'desc' },
+      });
+      if (!tarifa) {
+        throw HttpError.conflict('No hay tarifa vigente para ese tipo de vehiculo y estadia');
+      }
 
-    return tx.reserva.create({
-      data: {
-        ...data,
-        precioTotal: calcularPrecio(
-          tarifa.valor,
-          data.fechaInicio,
-          data.fechaFin,
-          tipoEstadia.duracionMinutos,
-        ),
-      },
-      include,
-    });
-  });
+      return tx.reserva.create({
+        data: {
+          ...data,
+          precioTotal: calcularPrecio(
+            tarifa.valor,
+            data.fechaInicio,
+            data.fechaFin,
+            tipoEstadia.duracionMinutos,
+          ),
+        },
+        include,
+      });
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
 
 export async function actualizar(id: number, data: ActualizarReservaInput) {

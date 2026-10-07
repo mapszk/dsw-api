@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '../src/generated/prisma/client.js';
 
 const tx = {
-  $queryRaw: vi.fn(),
+  cochera: { findUnique: vi.fn() },
   usuario: { findUnique: vi.fn() },
   tipoEstadia: { findUnique: vi.fn() },
   tipoVehiculo: { findUnique: vi.fn() },
@@ -46,7 +46,7 @@ describe('calcularPrecio', () => {
 describe('POST /api/reservas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    tx.$queryRaw.mockResolvedValue([{ estado: 'DISPONIBLE' }]);
+    tx.cochera.findUnique.mockResolvedValue({ id: 1, estado: 'DISPONIBLE' });
     tx.usuario.findUnique.mockResolvedValue({ id: 1, rol: 'CLIENTE' });
     tx.tipoEstadia.findUnique.mockResolvedValue({ id: 1, duracionMinutos: 60 });
     tx.tipoVehiculo.findUnique.mockResolvedValue({ id: 1 });
@@ -73,8 +73,18 @@ describe('POST /api/reservas', () => {
     expect(tx.reserva.create).not.toHaveBeenCalled();
   });
 
+  it('responde 409 si otra reserva simultanea aborta la transaccion', async () => {
+    tx.reserva.create.mockRejectedValue(
+      new Error('TransactionWriteConflict', { cause: { kind: 'TransactionWriteConflict' } }),
+    );
+
+    const res = await request(app).post('/api/reservas').send(body);
+
+    expect(res.status).toBe(409);
+  });
+
   it('responde 409 si la cochera esta inhabilitada', async () => {
-    tx.$queryRaw.mockResolvedValue([{ estado: 'INHABILITADA' }]);
+    tx.cochera.findUnique.mockResolvedValue({ id: 1, estado: 'INHABILITADA' });
 
     const res = await request(app).post('/api/reservas').send(body);
 
