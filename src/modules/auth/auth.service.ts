@@ -8,15 +8,18 @@ import * as usuarioService from '../usuario/usuario.service.js';
 import type { LoginInput, RegistrarInput } from './auth.schema.js';
 
 function generarToken({ id, rol }: Pick<Usuario, 'id' | 'rol'>) {
-  return jwt.sign({ rol }, env.JWT_SECRET, {
+  const token = jwt.sign({ rol }, env.JWT_SECRET, {
     subject: String(id),
     expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
   });
+  // La cookie vence junto con el token
+  const { exp } = jwt.decode(token) as jwt.JwtPayload & { exp: number };
+  return { token, expira: new Date(exp * 1000) };
 }
 
 export async function registrar(data: RegistrarInput) {
   const usuario = await usuarioService.crear({ ...data, rol: Rol.CLIENTE });
-  return { token: generarToken(usuario), usuario };
+  return { ...generarToken(usuario), usuario };
 }
 
 export async function login({ email, password }: LoginInput) {
@@ -26,5 +29,5 @@ export async function login({ email, password }: LoginInput) {
     throw HttpError.unauthorized('Email o contraseña incorrectos');
   }
   // El controller responde con toUsuarioDto, que no incluye la contraseña
-  return { token: generarToken(usuario), usuario };
+  return { ...generarToken(usuario), usuario };
 }

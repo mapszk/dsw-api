@@ -9,10 +9,28 @@ export interface UsuarioAutenticado {
   rol: Rol;
 }
 
-/** Exige un token valido en `Authorization: Bearer <token>` y deja el usuario en res.locals.usuario. */
-export function authenticate(req: Request, res: Response, next: NextFunction) {
+/** Cookie httpOnly donde viaja el token de sesion: el JavaScript de la pagina no puede leerla */
+export const COOKIE_SESION = 'sesion';
+
+/** El navegador manda el token en la cookie; otros clientes (tests, Postman) pueden usar el header */
+function leerToken(req: Request) {
+  const cookie = req.headers.cookie
+    ?.split(';')
+    .map((parte) => parte.trim())
+    .find((parte) => parte.startsWith(`${COOKIE_SESION}=`));
+  if (cookie) return decodeURIComponent(cookie.slice(COOKIE_SESION.length + 1));
+
   const [scheme, token] = req.headers.authorization?.split(' ') ?? [];
-  if (scheme !== 'Bearer' || !token) throw HttpError.unauthorized('Debe iniciar sesion');
+  return scheme === 'Bearer' ? token : undefined;
+}
+
+/**
+ * Exige un token valido (cookie de sesion o `Authorization: Bearer <token>`)
+ * y deja el usuario en res.locals.usuario.
+ */
+export function authenticate(req: Request, res: Response, next: NextFunction) {
+  const token = leerToken(req);
+  if (!token) throw HttpError.unauthorized('Debe iniciar sesion');
 
   let payload: jwt.JwtPayload & { rol: Rol };
   try {

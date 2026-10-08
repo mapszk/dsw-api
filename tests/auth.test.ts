@@ -22,6 +22,12 @@ const cliente = {
   updatedAt: new Date(),
 };
 
+/** Valor de la cookie de sesion que fijo la respuesta (Set-Cookie) */
+function cookieSesion(res: request.Response) {
+  const cookies = ([] as string[]).concat(res.headers['set-cookie'] ?? []);
+  return cookies.find((cookie) => cookie.startsWith('sesion='));
+}
+
 describe('/api/auth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,7 +41,7 @@ describe('/api/auth', () => {
       });
     });
 
-    it('devuelve un token con el id y el rol, sin la contraseña', async () => {
+    it('guarda el token en una cookie httpOnly y devuelve el usuario sin la contraseña', async () => {
       const res = await request(app)
         .post('/api/auth/login')
         .send({ email: 'Cliente@DSW.com', password: 'dsw12345' });
@@ -50,7 +56,13 @@ describe('/api/auth', () => {
         email: 'cliente@dsw.com',
         rol: 'CLIENTE',
       });
-      const payload = jwt.verify(res.body.token, env.JWT_SECRET) as jwt.JwtPayload;
+      // El token no viaja en el body: solo en la cookie, que el JavaScript de la pagina no puede leer
+      expect(res.body).not.toHaveProperty('token');
+      const cookie = cookieSesion(res);
+      expect(cookie).toMatch(/HttpOnly/);
+      expect(cookie).toMatch(/SameSite=Lax/);
+      const token = cookie!.split(';')[0].slice('sesion='.length);
+      const payload = jwt.verify(token, env.JWT_SECRET) as jwt.JwtPayload;
       expect(payload).toMatchObject({ sub: '2', rol: 'CLIENTE' });
     });
 
@@ -61,6 +73,7 @@ describe('/api/auth', () => {
 
       expect(res.status).toBe(401);
       expect(res.body.error.message).toBe('Email o contraseña incorrectos');
+      expect(cookieSesion(res)).toBeUndefined();
     });
 
     it('responde 401 con el mismo mensaje si el email no existe', async () => {
@@ -89,13 +102,32 @@ describe('/api/auth', () => {
 
       expect(res.status).toBe(201);
       expect(usuario.create.mock.calls[0][0].data.rol).toBe('CLIENTE');
-      expect(res.body.token).toEqual(expect.any(String));
+      expect(cookieSesion(res)).toMatch(/HttpOnly/);
       expect(res.body.usuario).not.toHaveProperty('password');
     });
   });
 
+  describe('POST /logout', () => {
+    it('borra la cookie de sesion', async () => {
+      const res = await request(app).post('/api/auth/logout');
+
+      expect(res.status).toBe(204);
+      expect(cookieSesion(res)).toMatch(/^sesion=;.*Expires=Thu, 01 Jan 1970/);
+    });
+  });
+
   describe('GET /me', () => {
-    it('devuelve el usuario del token', async () => {
+    it('devuelve el usuario de la cookie de sesion', async () => {
+      usuario.findUnique.mockResolvedValue(cliente);
+      const token = jwt.sign({ rol: 'CLIENTE' }, env.JWT_SECRET, { subject: '2' });
+
+      const res = await request(app).get('/api/auth/me').set('Cookie', `sesion=${token}`);
+
+      expect(res.status).toBe(200);
+      expect(usuario.findUnique.mock.calls[0][0].where).toEqual({ id: 2 });
+    });
+
+    it('tambien acepta el token en el header Authorization', async () => {
       usuario.findUnique.mockResolvedValue(cliente);
 
       const res = await request(app)
@@ -114,7 +146,7 @@ describe('/api/auth', () => {
 
       const invalido = await request(app)
         .get('/api/auth/me')
-        .set('Authorization', 'Bearer no-es-un-token');
+        .set('Cookie', 'sesion=no-es-un-token');
       const caducado = await request(app)
         .get('/api/auth/me')
         .set('Authorization', `Bearer ${vencido}`);
@@ -122,6 +154,13 @@ describe('/api/auth', () => {
       expect(invalido.status).toBe(401);
       expect(caducado.status).toBe(401);
       expect(caducado.body.error.message).toBe('La sesion es invalida o vencio');
+    });
+
+    it('responde 401 sin cookie ni header', async () => {
+      const res = await request(app).get('/api/auth/me');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error.message).toBe('Debe iniciar sesion');
     });
   });
 });
