@@ -33,9 +33,11 @@ const tarifa = {
   tipoEstadia: { id: 1, tipo: 'HORA', duracionMinutos: 60 },
 };
 
+const enUnMes = new Date(Date.now() + 30 * 24 * 60 * 60_000);
+
 const body = {
   valor: 1500.5,
-  fechaDesde: '2026-01-01T00:00:00Z',
+  fechaDesde: enUnMes.toISOString(),
   tipoVehiculoId: 1,
   tipoEstadiaId: 1,
 };
@@ -93,6 +95,17 @@ describe('/api/tarifas', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.valor).toBe(1500.5);
+  });
+
+  it('responde 400 si la tarifa nueva no es futura', async () => {
+    const res = await request(app)
+      .post('/api/tarifas')
+      .set('Authorization', admin)
+      .send({ ...body, fechaDesde: new Date().toISOString() });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toBe('La fecha desde debe ser futura');
+    expect(prismaMock.tarifa.create).not.toHaveBeenCalled();
   });
 
   it('responde 404 si el tipo de vehiculo no existe', async () => {
