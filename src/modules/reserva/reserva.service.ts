@@ -245,6 +245,40 @@ export async function reprogramar(
   );
 }
 
+/**
+ * Cancela una reserva: pasa a CANCELADA y queda en el historial (no se borra).
+ * Un CLIENTE solo cancela sus reservas pendientes. Un ADMIN tambien cancela una ACTIVA
+ * (el vehiculo ya ingreso), y en ese caso se libera la cochera.
+ */
+export async function cancelar(id: number, solicitante: UsuarioAutenticado) {
+  const reserva = await obtener(id, solicitante);
+  const cancelables: EstadoReserva[] =
+    solicitante.rol === Rol.ADMIN
+      ? [EstadoReserva.PENDIENTE, EstadoReserva.ACTIVA]
+      : [EstadoReserva.PENDIENTE];
+  if (!cancelables.includes(reserva.estado)) {
+    throw HttpError.conflict(
+      solicitante.rol === Rol.ADMIN
+        ? 'Solo se pueden cancelar reservas pendientes o activas'
+        : 'Solo se pueden cancelar reservas pendientes',
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    if (reserva.estado === EstadoReserva.ACTIVA) {
+      await tx.cochera.update({
+        where: { id: reserva.cochera.id },
+        data: { estado: EstadoCochera.DISPONIBLE },
+      });
+    }
+    return tx.reserva.update({
+      where: { id },
+      data: { estado: EstadoReserva.CANCELADA },
+      include,
+    });
+  });
+}
+
 export async function eliminar(id: number) {
   const reserva = await obtener(id);
   if (!ESTADOS_ELIMINABLES.includes(reserva.estado)) {

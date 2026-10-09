@@ -30,6 +30,10 @@ export async function reprogramar(req: Request, res: Response) {
   );
 }
 
+export async function cancelar(_req: Request, res: Response) {
+  res.json(toReservaDto(await reservaService.cancelar(res.locals.params.id, res.locals.usuario)));
+}
+
 export async function eliminar(_req: Request, res: Response) {
   await reservaService.eliminar(res.locals.params.id);
   res.status(204).end();

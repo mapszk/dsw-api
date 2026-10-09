@@ -30,6 +30,12 @@ reservaRouter.post(
   validate({ params: idParamSchema, body: reprogramarReservaSchema }),
   reservaController.reprogramar,
 );
+// Un CLIENTE cancela sus reservas (quedan en el historial); eliminar es solo para ADMIN
+reservaRouter.post(
+  '/:id/cancelar',
+  validate({ params: idParamSchema }),
+  reservaController.cancelar,
+);
 reservaRouter.delete(
   '/:id',
   authorize(Rol.ADMIN),
