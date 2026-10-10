@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { EstadoReserva } from '../../generated/prisma/client.js';
+import { EstadoReserva, MetodoPago } from '../../generated/prisma/client.js';
+
 
 const id = z.number().int().positive();
 
@@ -48,3 +49,9 @@ export type CrearReservaInput = z.infer<typeof crearReservaSchema>;
 export type ActualizarReservaInput = z.infer<typeof actualizarReservaSchema>;
 export type ReprogramarReservaInput = z.infer<typeof reprogramarReservaSchema>;
 export type ListarReservasQuery = z.infer<typeof listarReservasQuerySchema>;
+
+export const finalizarReservaSchema = z.object({
+  metodo: z.enum(MetodoPago, { error: 'El metodo debe ser EFECTIVO, TARJETA o TRANSFERENCIA' }),
+});
+
+export type FinalizarReservaInput = z.infer<typeof finalizarReservaSchema>;

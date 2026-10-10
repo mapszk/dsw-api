@@ -5,6 +5,7 @@ import { HttpError } from '../../utils/http-error.js';
 import type {
   ActualizarReservaInput,
   CrearReservaInput,
+  FinalizarReservaInput,
   ListarReservasQuery,
   ReprogramarReservaInput,
 } from './reserva.schema.js';
@@ -285,4 +286,50 @@ export async function eliminar(id: number) {
     throw HttpError.conflict('Solo se pueden eliminar reservas pendientes o canceladas');
   }
   await prisma.reserva.delete({ where: { id } });
+}
+
+/** Ingreso del vehiculo: la reserva pasa a ACTIVA y la cochera a OCUPADA */
+export function iniciar(id: number) {
+  return prisma.$transaction(async (tx) => {
+    const reserva = await tx.reserva.findUnique({ where: { id }, include: { cochera: true } });
+    if (!reserva) throw HttpError.notFound('Reserva no encontrada');
+    if (reserva.estado !== EstadoReserva.PENDIENTE) {
+      throw HttpError.conflict('Solo se pueden iniciar reservas pendientes');
+    }
+    if (reserva.cochera.estado !== EstadoCochera.DISPONIBLE) {
+      throw HttpError.conflict('La cochera no esta disponible');
+    }
+
+    await tx.cochera.update({
+      where: { id: reserva.cocheraId },
+      data: { estado: EstadoCochera.OCUPADA },
+    });
+    return tx.reserva.update({
+      where: { id },
+      data: { estado: EstadoReserva.ACTIVA },
+      include,
+    });
+  });
+}
+
+/** CU2 Finalizar reserva: registra el pago, pasa a FINALIZADA y libera la cochera */
+export function finalizar(id: number, { metodo }: FinalizarReservaInput) {
+  return prisma.$transaction(async (tx) => {
+    const reserva = await tx.reserva.findUnique({ where: { id } });
+    if (!reserva) throw HttpError.notFound('Reserva no encontrada');
+    if (reserva.estado !== EstadoReserva.ACTIVA) {
+      throw HttpError.conflict('Solo se pueden finalizar reservas activas');
+    }
+
+    await tx.pago.create({ data: { metodo, monto: reserva.precioTotal, reservaId: id } });
+    await tx.cochera.update({
+      where: { id: reserva.cocheraId },
+      data: { estado: EstadoCochera.DISPONIBLE },
+    });
+    return tx.reserva.update({
+      where: { id },
+      data: { estado: EstadoReserva.FINALIZADA },
+      include,
+    });
+  });
 }
