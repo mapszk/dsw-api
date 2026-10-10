@@ -7,7 +7,7 @@ import { tipoEstadiaRouter } from '../modules/tipo-estadia/tipo-estadia.routes.j
 import { tipoVehiculoRouter } from '../modules/tipo-vehiculo/tipo-vehiculo.routes.js';
 import { usuarioRouter } from '../modules/usuario/usuario.routes.js';
 import { playaRouter } from '../modules/playas/playa.routes.js';
-
+import { cocheraRouter } from '../modules/cochera/cochera.routes.js';
 
 export const router = Router();
 
@@ -22,3 +22,4 @@ router.use('/tipos-vehiculo', tipoVehiculoRouter);
 router.use('/tarifas', tarifaRouter);
 router.use('/usuarios', usuarioRouter);
 router.use('/reservas', reservaRouter);
+router.use('/cocheras', cocheraRouter);
