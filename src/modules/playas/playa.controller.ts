@@ -1,5 +1,7 @@
 import type { Request, Response } from 'express';
 import * as playaService from './playa.service.js';
+import type { FiltrosCocherasInput } from './playa.schema.js';
+
 
 export const listar = async (_req: Request, res: Response) => {
   const playas = await playaService.listarPlayas();
@@ -27,4 +29,12 @@ export const eliminar = async (_req: Request, res: Response) => {
   const { id } = res.locals.params as { id: number };
   await playaService.eliminarPlaya(id);
   res.status(204).send();
+};
+
+
+export const listarCocheras = async (_req: Request, res: Response) => {
+  const { id } = res.locals.params as { id: number };
+  const filtros = res.locals.query as FiltrosCocherasInput;
+  const cocheras = await playaService.listarCocherasDePlaya(id, filtros);
+  res.json(cocheras);
 };

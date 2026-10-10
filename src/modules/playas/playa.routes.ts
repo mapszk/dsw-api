@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import { validate } from '../../middlewares/validate.js';
 import * as playaController from './playa.controller.js';
-import { actualizarPlayaSchema, crearPlayaSchema, idParamSchema } from './playa.schema.js';
+import {
+  actualizarPlayaSchema,
+  crearPlayaSchema,
+  filtrosCocherasSchema,
+  idParamSchema,
+} from './playa.schema.js';
+
 
 export const playaRouter = Router();
 
@@ -14,3 +20,10 @@ playaRouter.put(
   playaController.actualizar,
 );
 playaRouter.delete('/:id', validate({ params: idParamSchema }), playaController.eliminar);
+
+
+playaRouter.get(
+  '/:id/cocheras',
+  validate({ params: idParamSchema, query: filtrosCocherasSchema }),
+  playaController.listarCocheras,
+);

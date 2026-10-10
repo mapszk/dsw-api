@@ -1,5 +1,9 @@
 import { prisma } from '../../lib/prisma.js';
-import type { ActualizarPlayaInput, CrearPlayaInput } from './playa.schema.js';
+import type {
+  ActualizarPlayaInput,
+  CrearPlayaInput,
+  FiltrosCocherasInput,
+} from './playa.schema.js';
 
 export const listarPlayas = () => {
   return prisma.playa.findMany({ orderBy: { id: 'asc' } });
@@ -19,4 +23,14 @@ export const actualizarPlaya = (id: number, data: ActualizarPlayaInput) => {
 
 export const eliminarPlaya = (id: number) => {
   return prisma.playa.delete({ where: { id } });
+};
+
+export const listarCocherasDePlaya = async (playaId: number, filtros: FiltrosCocherasInput) => {
+  await prisma.playa.findUniqueOrThrow({ where: { id: playaId } });
+
+  return prisma.cochera.findMany({
+    where: { playaId, estado: filtros.estado, techada: filtros.techada },
+    include: { playa: true },
+    orderBy: { id: 'asc' },
+  });
 };
