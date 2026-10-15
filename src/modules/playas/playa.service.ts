@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
+import { conOcupacion, reservasEnCurso } from '../cochera/cochera.service.js';
 import type {
   ActualizarPlayaInput,
   CrearPlayaInput,
@@ -28,9 +29,10 @@ export const eliminarPlaya = (id: number) => {
 export const listarCocherasDePlaya = async (playaId: number, filtros: FiltrosCocherasInput) => {
   await prisma.playa.findUniqueOrThrow({ where: { id: playaId } });
 
-  return prisma.cochera.findMany({
+  const cocheras = await prisma.cochera.findMany({
     where: { playaId, estado: filtros.estado, techada: filtros.techada },
-    include: { playa: true },
+    include: { playa: true, reservas: reservasEnCurso() },
     orderBy: { id: 'asc' },
   });
+  return cocheras.map(conOcupacion);
 };

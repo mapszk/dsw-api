@@ -18,13 +18,13 @@ enum Rol {
 enum EstadoReserva {
   PENDIENTE
   ACTIVA
-  FINALIZADA
+  PAGADA
   CANCELADA
 }
 
+// Si una cochera esta ocupada se calcula con las reservas en curso, no se guarda
 enum EstadoCochera {
   DISPONIBLE
-  OCUPADA
   INHABILITADA
 }
 

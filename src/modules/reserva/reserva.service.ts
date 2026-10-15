@@ -5,8 +5,8 @@ import { HttpError } from '../../utils/http-error.js';
 import type {
   ActualizarReservaInput,
   CrearReservaInput,
-  FinalizarReservaInput,
   ListarReservasQuery,
+  RegistrarPagoInput,
   ReprogramarReservaInput,
 } from './reserva.schema.js';
 
@@ -20,7 +20,12 @@ const include = {
 
 export type ReservaConRelaciones = Prisma.ReservaGetPayload<{ include: typeof include }>;
 
-const ESTADOS_QUE_OCUPAN: EstadoReserva[] = [EstadoReserva.PENDIENTE, EstadoReserva.ACTIVA];
+// Una reserva pagada antes de usarse sigue ocupando la cochera en su horario
+const ESTADOS_QUE_OCUPAN: EstadoReserva[] = [
+  EstadoReserva.PENDIENTE,
+  EstadoReserva.ACTIVA,
+  EstadoReserva.PAGADA,
+];
 const ESTADOS_ELIMINABLES: EstadoReserva[] = [EstadoReserva.PENDIENTE, EstadoReserva.CANCELADA];
 
 /** Reservas que ocupan la cochera en algun momento del rango [fechaInicio, fechaFin) */
@@ -246,37 +251,26 @@ export async function reprogramar(
   );
 }
 
+const ESTADOS_CANCELABLES: EstadoReserva[] = [EstadoReserva.PENDIENTE, EstadoReserva.ACTIVA];
+
 /**
- * Cancela una reserva: pasa a CANCELADA y queda en el historial (no se borra).
- * Un CLIENTE solo cancela sus reservas pendientes. Un ADMIN tambien cancela una ACTIVA
- * (el vehiculo ya ingreso), y en ese caso se libera la cochera.
+ * Cancela una reserva pendiente o activa: pasa a CANCELADA y queda en el historial (no se borra).
+ * Un ADMIN la cancela en cualquier momento; un CLIENTE, solo las suyas y antes de que empiecen.
+ * Una reserva PAGADA es final (las devoluciones quedan fuera del alcance).
  */
 export async function cancelar(id: number, solicitante: UsuarioAutenticado) {
   const reserva = await obtener(id, solicitante);
-  const cancelables: EstadoReserva[] =
-    solicitante.rol === Rol.ADMIN
-      ? [EstadoReserva.PENDIENTE, EstadoReserva.ACTIVA]
-      : [EstadoReserva.PENDIENTE];
-  if (!cancelables.includes(reserva.estado)) {
-    throw HttpError.conflict(
-      solicitante.rol === Rol.ADMIN
-        ? 'Solo se pueden cancelar reservas pendientes o activas'
-        : 'Solo se pueden cancelar reservas pendientes',
-    );
+  if (!ESTADOS_CANCELABLES.includes(reserva.estado)) {
+    throw HttpError.conflict('Solo se pueden cancelar reservas pendientes o activas');
+  }
+  if (solicitante.rol === Rol.CLIENTE && reserva.fechaInicio <= new Date()) {
+    throw HttpError.conflict('Solo se puede cancelar antes de la fecha de inicio');
   }
 
-  return prisma.$transaction(async (tx) => {
-    if (reserva.estado === EstadoReserva.ACTIVA) {
-      await tx.cochera.update({
-        where: { id: reserva.cochera.id },
-        data: { estado: EstadoCochera.DISPONIBLE },
-      });
-    }
-    return tx.reserva.update({
-      where: { id },
-      data: { estado: EstadoReserva.CANCELADA },
-      include,
-    });
+  return prisma.reserva.update({
+    where: { id },
+    data: { estado: EstadoReserva.CANCELADA },
+    include,
   });
 }
 
@@ -288,47 +282,43 @@ export async function eliminar(id: number) {
   await prisma.reserva.delete({ where: { id } });
 }
 
-/** Ingreso del vehiculo: la reserva pasa a ACTIVA y la cochera a OCUPADA */
-export function iniciar(id: number) {
-  return prisma.$transaction(async (tx) => {
-    const reserva = await tx.reserva.findUnique({ where: { id }, include: { cochera: true } });
-    if (!reserva) throw HttpError.notFound('Reserva no encontrada');
-    if (reserva.estado !== EstadoReserva.PENDIENTE) {
-      throw HttpError.conflict('Solo se pueden iniciar reservas pendientes');
-    }
-    if (reserva.cochera.estado !== EstadoCochera.DISPONIBLE) {
-      throw HttpError.conflict('La cochera no esta disponible');
-    }
+/**
+ * El ADMIN aprueba una reserva pendiente: pasa a ACTIVA.
+ * No cambia la cochera: queda ocupada solo durante el horario de la reserva.
+ */
+export async function aprobar(id: number) {
+  const reserva = await prisma.reserva.findUnique({ where: { id }, include: { cochera: true } });
+  if (!reserva) throw HttpError.notFound('Reserva no encontrada');
+  if (reserva.estado !== EstadoReserva.PENDIENTE) {
+    throw HttpError.conflict('Solo se pueden aprobar reservas pendientes');
+  }
+  if (reserva.fechaFin <= new Date()) {
+    throw HttpError.conflict('La reserva esta vencida');
+  }
+  if (reserva.cochera.estado === EstadoCochera.INHABILITADA) {
+    throw HttpError.conflict('La cochera esta inhabilitada');
+  }
 
-    await tx.cochera.update({
-      where: { id: reserva.cocheraId },
-      data: { estado: EstadoCochera.OCUPADA },
-    });
-    return tx.reserva.update({
-      where: { id },
-      data: { estado: EstadoReserva.ACTIVA },
-      include,
-    });
+  return prisma.reserva.update({
+    where: { id },
+    data: { estado: EstadoReserva.ACTIVA },
+    include,
   });
 }
 
-/** CU2 Finalizar reserva: registra el pago, pasa a FINALIZADA y libera la cochera */
-export function finalizar(id: number, { metodo }: FinalizarReservaInput) {
+/** CU2 Registrar pago: a partir de una reserva activa registra el Pago y la reserva pasa a PAGADA */
+export function registrarPago(id: number, { metodo }: RegistrarPagoInput) {
   return prisma.$transaction(async (tx) => {
     const reserva = await tx.reserva.findUnique({ where: { id } });
     if (!reserva) throw HttpError.notFound('Reserva no encontrada');
     if (reserva.estado !== EstadoReserva.ACTIVA) {
-      throw HttpError.conflict('Solo se pueden finalizar reservas activas');
+      throw HttpError.conflict('Solo se puede registrar el pago de reservas activas');
     }
 
     await tx.pago.create({ data: { metodo, monto: reserva.precioTotal, reservaId: id } });
-    await tx.cochera.update({
-      where: { id: reserva.cocheraId },
-      data: { estado: EstadoCochera.DISPONIBLE },
-    });
     return tx.reserva.update({
       where: { id },
-      data: { estado: EstadoReserva.FINALIZADA },
+      data: { estado: EstadoReserva.PAGADA },
       include,
     });
   });

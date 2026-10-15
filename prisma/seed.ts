@@ -10,14 +10,14 @@ const prisma = new PrismaClient({
 async function main() {
   const tiposVehiculo = ['AUTO', 'MOTO', 'CAMIONETA'];
   const tiposEstadia = [
-    { tipo: 'HORA', duracionMinutos: 60 },
-    { tipo: 'DIA', duracionMinutos: 60 * 24 },
-    { tipo: 'MES', duracionMinutos: 60 * 24 * 30 },
+    { tipo: 'Por hora', duracionMinutos: 60 },
+    { tipo: 'Diaria', duracionMinutos: 60 * 24 },
+    { tipo: 'Mensual', duracionMinutos: 60 * 24 * 30 },
   ];
   const valores: Record<string, Record<string, number>> = {
-    AUTO: { HORA: 1500, DIA: 12000, MES: 150000 },
-    MOTO: { HORA: 800, DIA: 6000, MES: 80000 },
-    CAMIONETA: { HORA: 2200, DIA: 18000, MES: 220000 },
+    AUTO: { 'Por hora': 1500, Diaria: 12000, Mensual: 150000 },
+    MOTO: { 'Por hora': 800, Diaria: 6000, Mensual: 80000 },
+    CAMIONETA: { 'Por hora': 2200, Diaria: 18000, Mensual: 220000 },
   };
   const fechaDesde = new Date('2026-01-01T00:00:00Z');
 

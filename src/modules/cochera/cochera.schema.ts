@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-export const estadoCocheraSchema = z.enum(['DISPONIBLE', 'OCUPADA', 'INHABILITADA'], {
-  error: 'El estado debe ser DISPONIBLE, OCUPADA o INHABILITADA',
+export const estadoCocheraSchema = z.enum(['DISPONIBLE', 'INHABILITADA'], {
+  error: 'El estado debe ser DISPONIBLE o INHABILITADA',
 });
 
 export const crearCocheraSchema = z.object({

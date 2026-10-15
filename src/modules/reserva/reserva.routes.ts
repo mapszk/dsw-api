@@ -7,8 +7,8 @@ import * as reservaController from './reserva.controller.js';
 import {
   actualizarReservaSchema,
   crearReservaSchema,
-  finalizarReservaSchema,
   listarReservasQuerySchema,
+  registrarPagoSchema,
   reprogramarReservaSchema,
 } from './reserva.schema.js';
 
@@ -32,23 +32,24 @@ reservaRouter.post(
   validate({ params: idParamSchema, body: reprogramarReservaSchema }),
   reservaController.reprogramar,
 );
-// Un CLIENTE cancela sus reservas (quedan en el historial); eliminar es solo para ADMIN
+// Un CLIENTE cancela sus reservas antes de que empiecen (quedan en el historial); eliminar es solo para ADMIN
 reservaRouter.post(
   '/:id/cancelar',
   validate({ params: idParamSchema }),
   reservaController.cancelar,
 );
+// Flujo del ADMIN: PENDIENTE -> aprobar -> ACTIVA -> pagar (CU2) -> PAGADA
 reservaRouter.post(
-  '/:id/iniciar',
+  '/:id/aprobar',
   authorize(Rol.ADMIN),
   validate({ params: idParamSchema }),
-  reservaController.iniciar,
+  reservaController.aprobar,
 );
 reservaRouter.post(
-  '/:id/finalizar',
+  '/:id/pagar',
   authorize(Rol.ADMIN),
-  validate({ params: idParamSchema, body: finalizarReservaSchema }),
-  reservaController.finalizar,
+  validate({ params: idParamSchema, body: registrarPagoSchema }),
+  reservaController.registrarPago,
 );
 reservaRouter.delete(
   '/:id',
