@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { toReservaDto } from './reserva.dto.js';
 import * as reservaService from './reserva.service.js';
-import type { FinalizarReservaInput } from './reserva.schema.js';
+import type { RegistrarPagoInput } from './reserva.schema.js';
 
 export async function listar(_req: Request, res: Response) {
   res.json((await reservaService.listar(res.locals.query, res.locals.usuario)).map(toReservaDto));
@@ -40,14 +40,11 @@ export async function eliminar(_req: Request, res: Response) {
   res.status(204).end();
 }
 
-export const iniciar = async (_req: Request, res: Response) => {
-  const { id } = res.locals.params as { id: number };
-  const reserva = await reservaService.iniciar(id);
-  res.json(reserva);
-};
+export async function aprobar(_req: Request, res: Response) {
+  res.json(toReservaDto(await reservaService.aprobar(res.locals.params.id)));
+}
 
-export const finalizar = async (req: Request, res: Response) => {
-  const { id } = res.locals.params as { id: number };
-  const reserva = await reservaService.finalizar(id, req.body as FinalizarReservaInput);
-  res.json(reserva);
-};
+export async function registrarPago(req: Request, res: Response) {
+  const data = req.body as RegistrarPagoInput;
+  res.json(toReservaDto(await reservaService.registrarPago(res.locals.params.id, data)));
+}

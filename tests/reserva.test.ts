@@ -91,6 +91,17 @@ describe('POST /api/reservas', () => {
     expect(tx.reserva.create).not.toHaveBeenCalled();
   });
 
+  it('cuentan como ocupacion las reservas pendientes, activas y pagadas', async () => {
+    tx.reserva.findFirst.mockResolvedValue({ id: 7 });
+
+    await request(app).post('/api/reservas').set('Authorization', admin).send(body);
+
+    // Una reserva pagada antes de usarse sigue ocupando la cochera en su horario
+    expect(tx.reserva.findFirst.mock.calls[0][0].where.estado).toEqual({
+      in: ['PENDIENTE', 'ACTIVA', 'PAGADA'],
+    });
+  });
+
   it('responde 409 si otra reserva simultanea aborta la transaccion', async () => {
     tx.reserva.create.mockRejectedValue(
       new Error('TransactionWriteConflict', { cause: { kind: 'TransactionWriteConflict' } }),

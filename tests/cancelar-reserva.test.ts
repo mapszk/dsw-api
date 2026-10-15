@@ -3,16 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '../src/generated/prisma/client.js';
 import { authHeader } from './helpers/auth.js';
 
-const tx = {
-  reserva: { update: vi.fn() },
-  cochera: { update: vi.fn() },
-};
+const reserva = { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() };
 
-const reserva = { findUnique: vi.fn(), delete: vi.fn() };
-
-vi.mock('../src/lib/prisma.js', () => ({
-  prisma: { $transaction: vi.fn((fn: (client: typeof tx) => unknown) => fn(tx)), reserva },
-}));
+vi.mock('../src/lib/prisma.js', () => ({ prisma: { reserva } }));
 
 const { app } = await import('../src/app.js');
 
@@ -20,12 +13,12 @@ const admin = authHeader('ADMIN');
 const duenio = authHeader('CLIENTE', 5);
 const otroCliente = authHeader('CLIENTE', 6);
 
-function reservaEn(estado: string) {
+function reservaEn(estado: string, fechaInicio = new Date('2099-01-10T10:00:00Z')) {
   return {
     id: 3,
     patente: 'AB123CD',
-    fechaInicio: new Date('2099-01-10T10:00:00Z'),
-    fechaFin: new Date('2099-01-10T12:00:00Z'),
+    fechaInicio,
+    fechaFin: new Date(fechaInicio.getTime() + 2 * 60 * 60_000),
     precioTotal: new Prisma.Decimal(3000),
     estado,
     usuarioId: 5,
@@ -44,7 +37,7 @@ function cancelar(token: string) {
 describe('POST /api/reservas/:id/cancelar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    tx.reserva.update.mockImplementation(({ data }) =>
+    reserva.update.mockImplementation(({ data }) =>
       Promise.resolve({ ...reservaEn('PENDIENTE'), ...data }),
     );
   });
@@ -56,12 +49,11 @@ describe('POST /api/reservas/:id/cancelar', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.estado).toBe('CANCELADA');
-    expect(tx.reserva.update.mock.calls[0][0]).toMatchObject({
+    expect(reserva.update.mock.calls[0][0]).toMatchObject({
       where: { id: 3 },
       data: { estado: 'CANCELADA' },
     });
     expect(reserva.delete).not.toHaveBeenCalled();
-    expect(tx.cochera.update).not.toHaveBeenCalled();
   });
 
   it('responde 404 si un cliente cancela una reserva ajena', async () => {
@@ -70,38 +62,44 @@ describe('POST /api/reservas/:id/cancelar', () => {
     const res = await cancelar(otroCliente);
 
     expect(res.status).toBe(404);
-    expect(tx.reserva.update).not.toHaveBeenCalled();
+    expect(reserva.update).not.toHaveBeenCalled();
   });
 
-  it('un cliente no puede cancelar una reserva activa', async () => {
+  it('un cliente cancela su reserva aprobada si todavia no empezo', async () => {
     reserva.findUnique.mockResolvedValue(reservaEn('ACTIVA'));
 
     const res = await cancelar(duenio);
 
-    expect(res.status).toBe(409);
-    expect(res.body.error.message).toBe('Solo se pueden cancelar reservas pendientes');
+    expect(res.status).toBe(200);
+    expect(res.body.estado).toBe('CANCELADA');
   });
 
-  it('el admin cancela una reserva activa y libera la cochera', async () => {
-    reserva.findUnique.mockResolvedValue(reservaEn('ACTIVA'));
+  it('un cliente no puede cancelar una reserva que ya empezo', async () => {
+    reserva.findUnique.mockResolvedValue(reservaEn('ACTIVA', new Date('2020-01-10T10:00:00Z')));
+
+    const res = await cancelar(duenio);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toBe('Solo se puede cancelar antes de la fecha de inicio');
+    expect(reserva.update).not.toHaveBeenCalled();
+  });
+
+  it('el admin cancela una reserva activa aunque ya haya empezado', async () => {
+    reserva.findUnique.mockResolvedValue(reservaEn('ACTIVA', new Date('2020-01-10T10:00:00Z')));
 
     const res = await cancelar(admin);
 
     expect(res.status).toBe(200);
-    expect(tx.cochera.update).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: { estado: 'DISPONIBLE' },
-    });
-    expect(tx.reserva.update.mock.calls[0][0].data).toEqual({ estado: 'CANCELADA' });
+    expect(reserva.update.mock.calls[0][0].data).toEqual({ estado: 'CANCELADA' });
   });
 
-  it.each(['FINALIZADA', 'CANCELADA'])('responde 409 si la reserva esta %s', async (estado) => {
+  it.each(['PAGADA', 'CANCELADA'])('responde 409 si la reserva esta %s', async (estado) => {
     reserva.findUnique.mockResolvedValue(reservaEn(estado));
 
     const res = await cancelar(admin);
 
     expect(res.status).toBe(409);
-    expect(tx.reserva.update).not.toHaveBeenCalled();
+    expect(reserva.update).not.toHaveBeenCalled();
   });
 
   it('responde 401 sin sesion', async () => {
