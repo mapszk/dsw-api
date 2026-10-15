@@ -7,9 +7,11 @@ import * as reservaController from './reserva.controller.js';
 import {
   actualizarReservaSchema,
   crearReservaSchema,
+  finalizarReservaSchema,
   listarReservasQuerySchema,
   reprogramarReservaSchema,
 } from './reserva.schema.js';
+
 
 export const reservaRouter = Router();
 
@@ -35,6 +37,18 @@ reservaRouter.post(
   '/:id/cancelar',
   validate({ params: idParamSchema }),
   reservaController.cancelar,
+);
+reservaRouter.post(
+  '/:id/iniciar',
+  authorize(Rol.ADMIN),
+  validate({ params: idParamSchema }),
+  reservaController.iniciar,
+);
+reservaRouter.post(
+  '/:id/finalizar',
+  authorize(Rol.ADMIN),
+  validate({ params: idParamSchema, body: finalizarReservaSchema }),
+  reservaController.finalizar,
 );
 reservaRouter.delete(
   '/:id',
