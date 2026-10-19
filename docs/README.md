@@ -2,15 +2,15 @@
 
 Punto de entrada de la documentación del backend, según los requisitos de la cátedra.
 
-| Sección                             | Estado                                                                    |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| Proposal actualizada                | Pendiente                                                                 |
-| Links a los PR                      | Pendiente                                                                 |
-| Instrucciones de instalación        | Ver [README principal](../README.md#instalación-y-ejecución-local-docker) |
-| Minutas de reunión y avance         | Pendiente                                                                 |
-| Tracking de features, bugs e issues | Pendiente                                                                 |
-| Documentación de la API             | Pendiente                                                                 |
-| Evidencia de ejecución de tests     | Pendiente                                                                 |
+| Sección                             | Estado                                                                        |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| Proposal actualizada                | Pendiente                                                                     |
+| Links a los PR                      | Pendiente                                                                     |
+| Instrucciones de instalación        | Ver [README principal](../README.md#instalación-y-ejecución-local-docker)     |
+| Minutas de reunión y avance         | Pendiente                                                                     |
+| Tracking de features, bugs e issues | Pendiente                                                                     |
+| Documentación de la API             | [openapi.yaml](openapi.yaml) (Swagger UI en `/api/docs` con la API levantada) |
+| Evidencia de ejecución de tests     | Pendiente                                                                     |
 
 ## Modelo de datos
 

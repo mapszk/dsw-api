@@ -54,3 +54,9 @@ Esto construye la imagen de la API, levanta PostgreSQL, espera a que la base est
 ```bash
 docker compose exec api npm run db:seed
 ```
+
+**5. Documentación de la API**
+
+Con la API levantada, la documentación interactiva (Swagger UI) queda en http://localhost:3000/api/docs. La especificación OpenAPI está en [docs/openapi.yaml](docs/openapi.yaml).
+
+Para probar endpoints protegidos desde Swagger, primero ejecutar `POST /auth/login` (por ejemplo con `admin@dsw.com` / `dsw12345`): la cookie de sesión queda guardada y se usa en los siguientes pedidos.
