@@ -3,13 +3,18 @@ import { Rol } from '../../generated/prisma/client.js';
 import { authenticate, authorize } from '../../middlewares/auth.js';
 import { validate } from '../../middlewares/validate.js';
 import * as pagoController from './pago.controller.js';
-import { actualizarPagoSchema, crearPagoSchema, idParamSchema } from './pago.schema.js';
+import {
+  actualizarPagoSchema,
+  crearPagoSchema,
+  idParamSchema,
+  listarPagosQuerySchema,
+} from './pago.schema.js';
 
 export const pagoRouter = Router();
 
 pagoRouter.use(authenticate, authorize(Rol.ADMIN));
 
-pagoRouter.get('/', pagoController.listar);
+pagoRouter.get('/', validate({ query: listarPagosQuerySchema }), pagoController.listar);
 pagoRouter.get('/:id', validate({ params: idParamSchema }), pagoController.obtener);
 pagoRouter.post('/', validate({ body: crearPagoSchema }), pagoController.crear);
 pagoRouter.put(

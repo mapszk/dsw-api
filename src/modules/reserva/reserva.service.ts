@@ -2,6 +2,7 @@ import { EstadoCochera, EstadoReserva, Prisma, Rol } from '../../generated/prism
 import { prisma } from '../../lib/prisma.js';
 import type { UsuarioAutenticado } from '../../middlewares/auth.js';
 import { HttpError } from '../../utils/http-error.js';
+import { registrarPagoManual } from '../pago/pago.service.js';
 import type {
   ActualizarReservaInput,
   CrearReservaInput,
@@ -306,20 +307,13 @@ export async function aprobar(id: number) {
   });
 }
 
-/** CU2 Registrar pago: a partir de una reserva activa registra el Pago y la reserva pasa a PAGADA */
+/**
+ * CU2 Registrar pago: a partir de una reserva activa registra el Pago (efectivo o transferencia)
+ * por el precio de la reserva, que pasa a PAGADA. Comparte las reglas con el CRUD de pagos.
+ */
 export function registrarPago(id: number, { metodo }: RegistrarPagoInput) {
   return prisma.$transaction(async (tx) => {
-    const reserva = await tx.reserva.findUnique({ where: { id } });
-    if (!reserva) throw HttpError.notFound('Reserva no encontrada');
-    if (reserva.estado !== EstadoReserva.ACTIVA) {
-      throw HttpError.conflict('Solo se puede registrar el pago de reservas activas');
-    }
-
-    await tx.pago.create({ data: { metodo, monto: reserva.precioTotal, reservaId: id } });
-    return tx.reserva.update({
-      where: { id },
-      data: { estado: EstadoReserva.PAGADA },
-      include,
-    });
+    await registrarPagoManual(tx, id, { metodo });
+    return tx.reserva.findUniqueOrThrow({ where: { id }, include });
   });
 }
