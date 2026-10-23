@@ -1,4 +1,9 @@
-import type { EstadoCochera, EstadoReserva, MetodoPago } from '../../generated/prisma/client.js';
+import type {
+  EstadoCochera,
+  EstadoPago,
+  EstadoReserva,
+  MetodoPago,
+} from '../../generated/prisma/client.js';
 import { toTipoEstadiaDto, type TipoEstadiaDto } from '../tipo-estadia/tipo-estadia.dto.js';
 import type { ReservaConRelaciones } from './reserva.service.js';
 
@@ -18,7 +23,7 @@ export interface ReservaDto {
   };
   tipoVehiculo: { id: number; tipo: string };
   tipoEstadia: TipoEstadiaDto;
-  pago: { id: number; fecha: string; metodo: MetodoPago; monto: number } | null;
+  pago: { id: number; fecha: string; metodo: MetodoPago; estado: EstadoPago; monto: number } | null;
 }
 
 export function toReservaDto(reserva: ReservaConRelaciones): ReservaDto {
@@ -49,6 +54,7 @@ export function toReservaDto(reserva: ReservaConRelaciones): ReservaDto {
       id: pago.id,
       fecha: pago.fecha.toISOString(),
       metodo: pago.metodo,
+      estado: pago.estado,
       monto: pago.monto.toNumber(),
     },
   };

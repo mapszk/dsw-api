@@ -39,7 +39,11 @@ tags:
       Un CLIENTE solo ve y opera sus propias reservas (las de otros responden 404).
       Estados: `PENDIENTE -> ACTIVA -> PAGADA`, y `PENDIENTE | ACTIVA -> CANCELADA`.
   - name: Pagos
-    description: Solo ADMIN
+    description: |
+      Solo ADMIN. Registra a mano los pagos en efectivo o transferencia, que quedan `APROBADO`.
+      Los `ONLINE` (procesados por un proveedor como MercadoPago) empiezan `PENDIENTE` y no se crean,
+      editan ni eliminan (si están aprobados) desde acá.
+      La reserva pasa a `PAGADA` solo con un pago `APROBADO`.
 
 paths:
   /health:
@@ -820,7 +824,10 @@ paths:
     post:
       tags: [Reservas]
       summary: 'CU2: registra el pago de una reserva activa (ADMIN)'
-      description: Crea el pago por el precio total de la reserva y la pasa a `PAGADA`.
+      description: |
+        Registra un pago manual `APROBADO` por el precio total de la reserva y la pasa a `PAGADA`.
+        Si la reserva tenía un pago online pendiente o rechazado, lo reemplaza.
+        Usa las mismas reglas que `POST /pagos`.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -831,7 +838,7 @@ paths:
               type: object
               required: [metodo]
               properties:
-                metodo: { $ref: '#/components/schemas/MetodoPago' }
+                metodo: { $ref: '#/components/schemas/MetodoPagoManual' }
       responses:
         '200':
           description: Reserva pagada (incluye el pago)
@@ -843,7 +850,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: La reserva no está activa
+          description: La reserva no está activa o ya tiene un pago aprobado
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -873,6 +880,13 @@ paths:
     get:
       tags: [Pagos]
       summary: Lista los pagos
+      parameters:
+        - name: estado
+          in: query
+          schema: { $ref: '#/components/schemas/EstadoPago' }
+        - name: metodo
+          in: query
+          schema: { $ref: '#/components/schemas/MetodoPago' }
       responses:
         '200':
           description: Pagos con su reserva
@@ -880,13 +894,17 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/PagoConReserva' }
+                items: { $ref: '#/components/schemas/Pago' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Pagos]
-      summary: Crea un pago
-      description: Para el flujo normal usar `POST /reservas/{id}/pagar`, que además cambia el estado de la reserva.
+      summary: Registra un pago manual (efectivo o transferencia)
+      description: |
+        La reserva tiene que estar `ACTIVA` y sin un pago `APROBADO`. El pago queda `APROBADO` y la
+        reserva `PAGADA`, en una transacción. Si la reserva tenía un pago online pendiente o
+        rechazado, lo reemplaza (cada reserva tiene un solo pago). Mismas reglas que `POST /reservas/{id}/pagar`.
       requestBody:
         required: true
         content:
@@ -894,15 +912,16 @@ paths:
             schema: { $ref: '#/components/schemas/CrearPagoInput' }
       responses:
         '201':
-          description: Pago creado
+          description: Pago registrado
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Pago' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: La reserva no existe o ya tiene un pago
+          description: La reserva no está activa o ya tiene un pago aprobado
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -918,13 +937,14 @@ paths:
           description: Pago con su reserva
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PagoConReserva' }
+              schema: { $ref: '#/components/schemas/Pago' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [Pagos]
-      summary: Modifica un pago (solo los campos enviados)
+      summary: Modifica un pago manual (solo los campos enviados)
+      description: El estado no se modifica. Los pagos online no se pueden modificar.
       requestBody:
         required: true
         content:
@@ -940,14 +960,28 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Es un pago online
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
     delete:
       tags: [Pagos]
       summary: Elimina un pago
+      description: |
+        Un pago manual se elimina y la reserva vuelve a `ACTIVA` (en una transacción).
+        Un pago online `PENDIENTE` o `RECHAZADO` se elimina sin cambiar la reserva;
+        uno `APROBADO` no se puede eliminar (requeriría un reembolso).
       responses:
         '204': { description: Pago eliminado }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Es un pago online aprobado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
 components:
   securitySchemes:
@@ -1030,7 +1064,18 @@ components:
       enum: [DISPONIBLE, INHABILITADA]
     MetodoPago:
       type: string
-      enum: [EFECTIVO, TARJETA, TRANSFERENCIA]
+      description: |
+        `ONLINE`: procesado por un proveedor externo (por ejemplo, MercadoPago).
+        `TARJETA` solo aparece en pagos ya registrados: no se acepta en pagos nuevos.
+      enum: [EFECTIVO, TARJETA, TRANSFERENCIA, ONLINE]
+    MetodoPagoManual:
+      type: string
+      description: Métodos que el ADMIN registra a mano
+      enum: [EFECTIVO, TRANSFERENCIA]
+    EstadoPago:
+      type: string
+      description: Los pagos manuales se crean `APROBADO`; los online, `PENDIENTE`
+      enum: [PENDIENTE, APROBADO, RECHAZADO]
     Patente:
       type: string
       description: Patente vieja (ABC123) o Mercosur (AB123CD). Se ignoran espacios y guiones.
@@ -1245,48 +1290,34 @@ components:
             id: { type: integer }
             fecha: { type: string, format: date-time }
             metodo: { $ref: '#/components/schemas/MetodoPago' }
+            estado: { $ref: '#/components/schemas/EstadoPago' }
             monto: { type: number }
 
     Pago:
-      allOf:
-        - type: object
+      type: object
+      properties:
+        id: { type: integer }
+        fecha: { type: string, format: date-time }
+        metodo: { $ref: '#/components/schemas/MetodoPago' }
+        estado: { $ref: '#/components/schemas/EstadoPago' }
+        monto: { type: number, example: 3000 }
+        reservaId: { type: integer }
+        reserva:
+          type: object
           properties:
             id: { type: integer }
-            fecha: { type: string, format: date-time }
-            metodo: { $ref: '#/components/schemas/MetodoPago' }
-            monto: { type: string, description: Decimal serializado como texto, example: '1500.00' }
-            reservaId: { type: integer }
-        - $ref: '#/components/schemas/Timestamps'
-    PagoConReserva:
-      allOf:
-        - $ref: '#/components/schemas/Pago'
-        - type: object
-          properties:
-            reserva:
-              type: object
-              description: Reserva tal como está en la base (con sus ids de relaciones)
-              properties:
-                id: { type: integer }
-                patente: { type: string }
-                fechaInicio: { type: string, format: date-time }
-                fechaFin: { type: string, format: date-time }
-                precioTotal: { type: string, example: '1500.00' }
-                estado: { $ref: '#/components/schemas/EstadoReserva' }
-                usuarioId: { type: integer }
-                cocheraId: { type: integer }
-                tipoVehiculoId: { type: integer }
-                tipoEstadiaId: { type: integer }
+            patente: { type: string }
     CrearPagoInput:
       type: object
       required: [metodo, monto, reservaId]
       properties:
         fecha: { type: string, format: date-time, description: 'Por defecto, ahora' }
-        metodo: { $ref: '#/components/schemas/MetodoPago' }
+        metodo: { $ref: '#/components/schemas/MetodoPagoManual' }
         monto: { type: number, minimum: 0.01 }
         reservaId: { type: integer, minimum: 1 }
     ActualizarPagoInput:
       type: object
       properties:
         fecha: { type: string, format: date-time }
-        metodo: { $ref: '#/components/schemas/MetodoPago' }
+        metodo: { $ref: '#/components/schemas/MetodoPagoManual' }
         monto: { type: number, minimum: 0.01 }
