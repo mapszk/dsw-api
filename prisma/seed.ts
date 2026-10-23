@@ -74,8 +74,9 @@ async function main() {
     });
   }
 
-  // Reservas pasadas del cliente con un pago de cada metodo y estado. Al ser pasadas no
-  // ocupan cocheras en fechas futuras. Se identifican por la patente para no duplicarlas.
+  // Reservas pasadas del cliente con un pago de cada metodo y estado (TARJETA ya no se acepta en
+  // pagos nuevos, pero queda en el historial). Al ser pasadas no ocupan cocheras en fechas futuras.
+  // Se identifican por la patente para no duplicarlas.
   const cliente = await prisma.usuario.findUniqueOrThrow({ where: { email: 'cliente@dsw.com' } });
   const cochera = await prisma.cochera.findFirstOrThrow({
     where: { playaId: playa.id },
@@ -92,21 +93,10 @@ async function main() {
       metodo: 'TRANSFERENCIA',
       estadoPago: 'APROBADO',
     },
-    { patente: 'SEED003', dia: 3, estado: 'PAGADA', metodo: 'MERCADOPAGO', estadoPago: 'APROBADO' },
-    {
-      patente: 'SEED004',
-      dia: 4,
-      estado: 'ACTIVA',
-      metodo: 'MERCADOPAGO',
-      estadoPago: 'PENDIENTE',
-    },
-    {
-      patente: 'SEED005',
-      dia: 5,
-      estado: 'ACTIVA',
-      metodo: 'MERCADOPAGO',
-      estadoPago: 'RECHAZADO',
-    },
+    { patente: 'SEED003', dia: 3, estado: 'PAGADA', metodo: 'TARJETA', estadoPago: 'APROBADO' },
+    { patente: 'SEED004', dia: 4, estado: 'PAGADA', metodo: 'ONLINE', estadoPago: 'APROBADO' },
+    { patente: 'SEED005', dia: 5, estado: 'ACTIVA', metodo: 'ONLINE', estadoPago: 'PENDIENTE' },
+    { patente: 'SEED006', dia: 6, estado: 'ACTIVA', metodo: 'ONLINE', estadoPago: 'RECHAZADO' },
   ] as const;
   for (const r of reservasConPago) {
     // 2 horas de AUTO por hora
@@ -125,7 +115,7 @@ async function main() {
     const reserva =
       (await prisma.reserva.findFirst({ where: { patente: r.patente } })) ??
       (await prisma.reserva.create({ data: datosReserva }));
-    const esMercadoPago = r.metodo === 'MERCADOPAGO';
+    const esOnline = r.metodo === 'ONLINE';
     await prisma.pago.upsert({
       where: { reservaId: reserva.id },
       update: {},
@@ -135,9 +125,9 @@ async function main() {
         estado: r.estadoPago,
         monto: precioTotal,
         reservaId: reserva.id,
-        mpPreferenceId: esMercadoPago ? `seed-preferencia-${r.patente}` : null,
-        mpPaymentId:
-          esMercadoPago && r.estadoPago !== 'PENDIENTE' ? `seed-pago-${r.patente}` : null,
+        proveedor: esOnline ? 'MERCADOPAGO' : null,
+        checkoutId: esOnline ? `seed-checkout-${r.patente}` : null,
+        pagoExternoId: esOnline && r.estadoPago !== 'PENDIENTE' ? `seed-pago-${r.patente}` : null,
       },
     });
   }

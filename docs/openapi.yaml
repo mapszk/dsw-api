@@ -41,7 +41,8 @@ tags:
   - name: Pagos
     description: |
       Solo ADMIN. Registra a mano los pagos en efectivo o transferencia, que quedan `APROBADO`.
-      Los de MercadoPago empiezan `PENDIENTE` y no se crean, editan ni eliminan (si están aprobados) desde acá.
+      Los `ONLINE` (procesados por un proveedor como MercadoPago) empiezan `PENDIENTE` y no se crean,
+      editan ni eliminan (si están aprobados) desde acá.
       La reserva pasa a `PAGADA` solo con un pago `APROBADO`.
 
 paths:
@@ -825,7 +826,7 @@ paths:
       summary: 'CU2: registra el pago de una reserva activa (ADMIN)'
       description: |
         Registra un pago manual `APROBADO` por el precio total de la reserva y la pasa a `PAGADA`.
-        Si la reserva tenía un pago de MercadoPago pendiente o rechazado, lo reemplaza.
+        Si la reserva tenía un pago online pendiente o rechazado, lo reemplaza.
         Usa las mismas reglas que `POST /pagos`.
       parameters:
         - $ref: '#/components/parameters/Id'
@@ -902,7 +903,7 @@ paths:
       summary: Registra un pago manual (efectivo o transferencia)
       description: |
         La reserva tiene que estar `ACTIVA` y sin un pago `APROBADO`. El pago queda `APROBADO` y la
-        reserva `PAGADA`, en una transacción. Si la reserva tenía un pago de MercadoPago pendiente o
+        reserva `PAGADA`, en una transacción. Si la reserva tenía un pago online pendiente o
         rechazado, lo reemplaza (cada reserva tiene un solo pago). Mismas reglas que `POST /reservas/{id}/pagar`.
       requestBody:
         required: true
@@ -943,7 +944,7 @@ paths:
     put:
       tags: [Pagos]
       summary: Modifica un pago manual (solo los campos enviados)
-      description: El estado no se modifica. Los pagos de MercadoPago no se pueden modificar.
+      description: El estado no se modifica. Los pagos online no se pueden modificar.
       requestBody:
         required: true
         content:
@@ -960,7 +961,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Es un pago de MercadoPago
+          description: Es un pago online
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -969,7 +970,7 @@ paths:
       summary: Elimina un pago
       description: |
         Un pago manual se elimina y la reserva vuelve a `ACTIVA` (en una transacción).
-        Un pago de MercadoPago `PENDIENTE` o `RECHAZADO` se elimina sin cambiar la reserva;
+        Un pago online `PENDIENTE` o `RECHAZADO` se elimina sin cambiar la reserva;
         uno `APROBADO` no se puede eliminar (requeriría un reembolso).
       responses:
         '204': { description: Pago eliminado }
@@ -977,7 +978,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Es un pago de MercadoPago aprobado
+          description: Es un pago online aprobado
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1063,14 +1064,17 @@ components:
       enum: [DISPONIBLE, INHABILITADA]
     MetodoPago:
       type: string
-      enum: [EFECTIVO, TRANSFERENCIA, MERCADOPAGO]
+      description: |
+        `ONLINE`: procesado por un proveedor externo (por ejemplo, MercadoPago).
+        `TARJETA` solo aparece en pagos ya registrados: no se acepta en pagos nuevos.
+      enum: [EFECTIVO, TARJETA, TRANSFERENCIA, ONLINE]
     MetodoPagoManual:
       type: string
       description: Métodos que el ADMIN registra a mano
       enum: [EFECTIVO, TRANSFERENCIA]
     EstadoPago:
       type: string
-      description: Los pagos manuales se crean `APROBADO`; los de MercadoPago, `PENDIENTE`
+      description: Los pagos manuales se crean `APROBADO`; los online, `PENDIENTE`
       enum: [PENDIENTE, APROBADO, RECHAZADO]
     Patente:
       type: string

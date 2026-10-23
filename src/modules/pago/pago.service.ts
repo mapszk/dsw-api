@@ -24,7 +24,7 @@ export const obtenerPago = async (id: number) => {
 /**
  * Registra un pago manual (efectivo o transferencia) de una reserva ACTIVA: el pago queda APROBADO
  * y la reserva PAGADA. Lo usan el CRUD de pagos y el CU2, siempre dentro de una transaccion.
- * Si la reserva tenia un pago de MercadoPago sin aprobar, se reemplaza: reservaId es unico.
+ * Si la reserva tenia un pago online sin aprobar, se reemplaza: reservaId es unico.
  */
 export async function registrarPagoManual(
   tx: Prisma.TransactionClient,
@@ -49,8 +49,9 @@ export async function registrarPagoManual(
     // Sin monto, se cobra el precio de la reserva
     monto: monto ?? reserva.precioTotal,
     fecha: fecha ?? new Date(),
-    mpPreferenceId: null,
-    mpPaymentId: null,
+    proveedor: null,
+    checkoutId: null,
+    pagoExternoId: null,
   };
   const pago = reserva.pago
     ? await tx.pago.update({ where: { id: reserva.pago.id }, data, include })
@@ -63,21 +64,21 @@ export const crearPago = ({ reservaId, ...data }: CrearPagoInput) => {
   return prisma.$transaction((tx) => registrarPagoManual(tx, reservaId, data));
 };
 
-// Los pagos de MercadoPago los actualiza el webhook; el estado de un pago nunca se edita a mano
+// Los pagos online los actualiza el aviso del proveedor; el estado de un pago nunca se edita a mano
 export const actualizarPago = async (id: number, data: ActualizarPagoInput) => {
   const pago = await obtenerPago(id);
-  if (pago.metodo === MetodoPago.MERCADOPAGO) {
-    throw HttpError.conflict('Los pagos de MercadoPago no se pueden modificar');
+  if (pago.metodo === MetodoPago.ONLINE) {
+    throw HttpError.conflict('Los pagos online no se pueden modificar');
   }
   return prisma.pago.update({ where: { id }, data, include });
 };
 
 export const eliminarPago = async (id: number) => {
   const pago = await obtenerPago(id);
-  if (pago.metodo === MetodoPago.MERCADOPAGO) {
-    // Anular un pago de MercadoPago aprobado requeriria un reembolso (fuera del alcance)
+  if (pago.metodo === MetodoPago.ONLINE) {
+    // Anular un pago online aprobado requeriria un reembolso (fuera del alcance)
     if (pago.estado === EstadoPago.APROBADO) {
-      throw HttpError.conflict('Un pago de MercadoPago aprobado no se puede eliminar');
+      throw HttpError.conflict('Un pago online aprobado no se puede eliminar');
     }
     await prisma.pago.delete({ where: { id } });
     return;

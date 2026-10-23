@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
-export const metodoPagoSchema = z.enum(['EFECTIVO', 'TRANSFERENCIA', 'MERCADOPAGO'], {
-  error: 'El método debe ser EFECTIVO, TRANSFERENCIA o MERCADOPAGO',
+// Todos los metodos, para filtrar: TARJETA solo aparece en pagos ya registrados
+export const metodoPagoSchema = z.enum(['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'ONLINE'], {
+  error: 'El método debe ser EFECTIVO, TARJETA, TRANSFERENCIA u ONLINE',
 });
 
-// El ADMIN registra a mano solo efectivo y transferencia: los pagos de MercadoPago los crea el checkout
+// El ADMIN registra a mano solo efectivo y transferencia: los pagos online los crea el checkout
 export const metodoPagoManualSchema = z.enum(['EFECTIVO', 'TRANSFERENCIA'], {
   error: 'El método debe ser EFECTIVO o TRANSFERENCIA',
 });

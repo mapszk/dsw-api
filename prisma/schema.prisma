@@ -28,14 +28,17 @@ enum EstadoCochera {
   INHABILITADA
 }
 
+// TARJETA queda para los pagos ya registrados: la API no la acepta en pagos nuevos.
+// ONLINE es un pago procesado por un proveedor externo (por ejemplo, MercadoPago)
 enum MetodoPago {
   EFECTIVO
+  TARJETA
   TRANSFERENCIA
-  MERCADOPAGO
+  ONLINE
 }
 
-// Los pagos manuales (efectivo, transferencia) se registran APROBADOS; los de MercadoPago
-// empiezan PENDIENTES y los actualiza el webhook
+// Los pagos manuales (efectivo, transferencia) se registran APROBADOS; los online
+// empiezan PENDIENTES y los actualiza el aviso del proveedor
 enum EstadoPago {
   PENDIENTE
   APROBADO
@@ -147,18 +150,21 @@ model Reserva {
 }
 
 model Pago {
-  id             Int        @id @default(autoincrement())
-  fecha          DateTime   @default(now())
-  metodo         MetodoPago
-  estado         EstadoPago @default(PENDIENTE)
-  monto          Decimal    @db.Decimal(10, 2)
-  // Solo para MERCADOPAGO: la preferencia (checkout) y el pago que informa el webhook
-  mpPreferenceId String?    @map("mp_preference_id")
-  mpPaymentId    String?    @unique @map("mp_payment_id")
-  reservaId      Int        @unique @map("reserva_id")
-  reserva        Reserva    @relation(fields: [reservaId], references: [id])
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+  id            Int        @id @default(autoincrement())
+  fecha         DateTime   @default(now())
+  metodo        MetodoPago
+  estado        EstadoPago @default(PENDIENTE)
+  monto         Decimal    @db.Decimal(10, 2)
+  // Solo para ONLINE: quien procesa el pago (por ejemplo "MERCADOPAGO"), el checkout que se le
+  // abre al cliente y el id del pago en el proveedor
+  proveedor     String?
+  checkoutId    String?    @map("checkout_id")
+  pagoExternoId String?    @map("pago_externo_id")
+  reservaId     Int        @unique @map("reserva_id")
+  reserva       Reserva    @relation(fields: [reservaId], references: [id])
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
 
+  @@unique([proveedor, pagoExternoId])
   @@map("pagos")
 }

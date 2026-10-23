@@ -42,12 +42,12 @@ describe('registrar pago de una reserva (CU2)', () => {
     expect(resultado.estado).toBe('PAGADA');
   });
 
-  it('reemplaza un pago de MercadoPago sin aprobar en lugar de crear otro', async () => {
+  it('reemplaza un pago online sin aprobar en lugar de crear otro', async () => {
     tx.reserva.findUnique.mockResolvedValue({
       id: 1,
       estado: 'ACTIVA',
       precioTotal: '3000',
-      pago: { id: 7, metodo: 'MERCADOPAGO', estado: 'RECHAZADO' },
+      pago: { id: 7, metodo: 'ONLINE', estado: 'RECHAZADO' },
     });
     tx.reserva.findUniqueOrThrow.mockResolvedValue({ id: 1, estado: 'PAGADA' });
 
@@ -60,8 +60,9 @@ describe('registrar pago de una reserva (CU2)', () => {
         data: expect.objectContaining({
           metodo: 'TRANSFERENCIA',
           estado: 'APROBADO',
-          mpPreferenceId: null,
-          mpPaymentId: null,
+          proveedor: null,
+          checkoutId: null,
+          pagoExternoId: null,
         }),
       }),
     );
@@ -71,7 +72,7 @@ describe('registrar pago de una reserva (CU2)', () => {
     tx.reserva.findUnique.mockResolvedValue({
       id: 1,
       estado: 'PAGADA',
-      pago: { id: 7, metodo: 'MERCADOPAGO', estado: 'APROBADO' },
+      pago: { id: 7, metodo: 'ONLINE', estado: 'APROBADO' },
     });
 
     await expect(registrarPago(1, { metodo: 'EFECTIVO' })).rejects.toThrow(

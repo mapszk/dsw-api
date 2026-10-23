@@ -50,7 +50,7 @@ export type ActualizarReservaInput = z.infer<typeof actualizarReservaSchema>;
 export type ReprogramarReservaInput = z.infer<typeof reprogramarReservaSchema>;
 export type ListarReservasQuery = z.infer<typeof listarReservasQuerySchema>;
 
-// Los pagos de MercadoPago no se registran a mano: los crea el checkout
+// Los pagos online no se registran a mano: los crea el checkout
 export const registrarPagoSchema = z.object({
   metodo: metodoPagoManualSchema,
 });

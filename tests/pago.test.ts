@@ -36,8 +36,9 @@ function pago(datos: Record<string, unknown> = {}) {
     metodo: 'EFECTIVO',
     estado: 'APROBADO',
     monto: new Prisma.Decimal(3000),
-    mpPreferenceId: null,
-    mpPaymentId: null,
+    proveedor: null,
+    checkoutId: null,
+    pagoExternoId: null,
     reservaId: 10,
     reserva: { id: 10, patente: 'AB123CD' },
     ...datos,
@@ -84,6 +85,15 @@ describe('/api/pagos', () => {
     ]);
   });
 
+  it('filtra los pagos con tarjeta ya registrados', async () => {
+    db.pago.findMany.mockResolvedValue([pago({ metodo: 'TARJETA' })]);
+
+    const res = await request(app).get('/api/pagos?metodo=TARJETA').set('Authorization', admin);
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].metodo).toBe('TARJETA');
+  });
+
   it('responde 400 con un filtro invalido', async () => {
     const res = await request(app).get('/api/pagos?estado=PAGADO').set('Authorization', admin);
 
@@ -115,11 +125,12 @@ describe('/api/pagos', () => {
       });
     });
 
-    it('rechaza MERCADOPAGO: esos pagos los crea el checkout', async () => {
+    // ONLINE lo crea el checkout; TARJETA solo queda en los pagos ya registrados
+    it.each(['ONLINE', 'TARJETA'])('rechaza el metodo %s', async (metodo) => {
       const res = await request(app)
         .post('/api/pagos')
         .set('Authorization', admin)
-        .send({ ...body, metodo: 'MERCADOPAGO' });
+        .send({ ...body, metodo });
 
       expect(res.status).toBe(400);
       expect(db.pago.create).not.toHaveBeenCalled();
@@ -163,8 +174,8 @@ describe('/api/pagos', () => {
       );
     });
 
-    it('responde 409 con un pago de MercadoPago', async () => {
-      db.pago.findUnique.mockResolvedValue(pago({ metodo: 'MERCADOPAGO' }));
+    it('responde 409 con un pago online', async () => {
+      db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE' }));
 
       const res = await request(app)
         .put('/api/pagos/1')
@@ -190,8 +201,8 @@ describe('/api/pagos', () => {
       });
     });
 
-    it('responde 409 con un pago de MercadoPago aprobado', async () => {
-      db.pago.findUnique.mockResolvedValue(pago({ metodo: 'MERCADOPAGO' }));
+    it('responde 409 con un pago online aprobado', async () => {
+      db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE' }));
 
       const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
 
@@ -200,9 +211,9 @@ describe('/api/pagos', () => {
     });
 
     it.each(['PENDIENTE', 'RECHAZADO'])(
-      'borra un pago de MercadoPago %s sin cambiar la reserva',
+      'borra un pago online %s sin cambiar la reserva',
       async (estado) => {
-        db.pago.findUnique.mockResolvedValue(pago({ metodo: 'MERCADOPAGO', estado }));
+        db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE', estado }));
 
         const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
 
