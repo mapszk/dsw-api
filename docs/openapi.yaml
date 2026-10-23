@@ -1,0 +1,1292 @@
+openapi: 3.0.3
+info:
+  title: DSW API - Reservas de estacionamiento
+  version: 0.1.0
+  description: |
+    API REST del trabajo práctico de Desarrollo de Software (UTN).
+
+    **Autenticación**: `POST /auth/login` (o `/auth/register`) deja el token JWT en la cookie
+    httpOnly `sesion`, que el navegador manda sola en cada pedido. Otros clientes (Postman, curl)
+    pueden mandar el mismo token en el header `Authorization: Bearer <token>`.
+
+    **Roles**:
+    - `ADMIN`: gestiona todo.
+    - `CLIENTE`: consulta playas, cocheras, tipos y tarifas, y gestiona solo sus reservas.
+
+    **Errores**: todas las respuestas de error tienen la forma
+    `{ "error": { "message": string, "details"?: any } }`.
+    Códigos: 400 datos inválidos, 401 sin sesión, 403 sin permisos, 404 no existe,
+    409 conflicto (dato duplicado, registro relacionado, cochera ocupada, transición de estado inválida).
+
+    Usuarios del seed: `admin@dsw.com` y `cliente@dsw.com`, contraseña `dsw12345`.
+servers:
+  - url: /api
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: Health
+  - name: Auth
+  - name: Usuarios
+    description: Solo ADMIN
+  - name: Tipos de vehículo
+  - name: Tipos de estadía
+  - name: Tarifas
+  - name: Playas
+  - name: Cocheras
+  - name: Reservas
+    description: |
+      Un CLIENTE solo ve y opera sus propias reservas (las de otros responden 404).
+      Estados: `PENDIENTE -> ACTIVA -> PAGADA`, y `PENDIENTE | ACTIVA -> CANCELADA`.
+  - name: Pagos
+    description: Solo ADMIN
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Estado de la API y de la conexión a la base
+      security: []
+      responses:
+        '200':
+          description: API y base de datos funcionando
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registra un CLIENTE e inicia su sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegistrarInput' }
+      responses:
+        '201':
+          description: Usuario creado. Setea la cookie `sesion`.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetCookieSesion' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SesionResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Inicia sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginInput' }
+      responses:
+        '200':
+          description: Credenciales correctas. Setea la cookie `sesion`.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetCookieSesion' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SesionResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Email o contraseña incorrectos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cierra la sesión (borra la cookie)
+      security: []
+      responses:
+        '204': { description: Sesión cerrada }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Usuario de la sesión actual
+      responses:
+        '200':
+          description: Usuario logueado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /usuarios:
+    get:
+      tags: [Usuarios]
+      summary: Lista los usuarios
+      responses:
+        '200':
+          description: Usuarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Usuarios]
+      summary: Crea un usuario (ADMIN o CLIENTE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CrearUsuarioInput' }
+      responses:
+        '201':
+          description: Usuario creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /usuarios/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Usuarios]
+      summary: Obtiene un usuario
+      responses:
+        '200':
+          description: Usuario
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Usuarios]
+      summary: Modifica un usuario (solo los campos enviados)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualizarUsuarioInput' }
+      responses:
+        '200':
+          description: Usuario modificado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Usuarios]
+      summary: Elimina un usuario
+      responses:
+        '204': { description: Usuario eliminado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: El usuario tiene reservas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /tipos-vehiculo:
+    get:
+      tags: [Tipos de vehículo]
+      summary: Lista los tipos de vehículo
+      responses:
+        '200':
+          description: Tipos de vehículo
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TipoVehiculo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tipos de vehículo]
+      summary: Crea un tipo de vehículo (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TipoVehiculoInput' }
+      responses:
+        '201':
+          description: Tipo creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TipoVehiculo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /tipos-vehiculo/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Tipos de vehículo]
+      summary: Obtiene un tipo de vehículo
+      responses:
+        '200':
+          description: Tipo de vehículo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TipoVehiculo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Tipos de vehículo]
+      summary: Modifica un tipo de vehículo (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TipoVehiculoInput' }
+      responses:
+        '200':
+          description: Tipo modificado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TipoVehiculo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Tipos de vehículo]
+      summary: Elimina un tipo de vehículo (ADMIN)
+      responses:
+        '204': { description: Tipo eliminado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Tiene tarifas o reservas asociadas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /tipos-estadia:
+    get:
+      tags: [Tipos de estadía]
+      summary: Lista los tipos de estadía
+      responses:
+        '200':
+          description: Tipos de estadía
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TipoEstadia' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tipos de estadía]
+      summary: Crea un tipo de estadía (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TipoEstadiaInput' }
+      responses:
+        '201':
+          description: Tipo creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TipoEstadia' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /tipos-estadia/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Tipos de estadía]
+      summary: Obtiene un tipo de estadía
+      responses:
+        '200':
+          description: Tipo de estadía
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TipoEstadia' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Tipos de estadía]
+      summary: Modifica un tipo de estadía (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualizarTipoEstadiaInput' }
+      responses:
+        '200':
+          description: Tipo modificado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TipoEstadia' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Tipos de estadía]
+      summary: Elimina un tipo de estadía (ADMIN)
+      responses:
+        '204': { description: Tipo eliminado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Tiene tarifas o reservas asociadas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /tarifas:
+    get:
+      tags: [Tarifas]
+      summary: Lista las tarifas (historial completo)
+      responses:
+        '200':
+          description: Tarifas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tarifa' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Tarifas]
+      summary: Crea una tarifa a futuro (ADMIN)
+      description: '`fechaDesde` debe ser futura: los precios vigentes no se cambian, se reemplazan.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CrearTarifaInput' }
+      responses:
+        '201':
+          description: Tarifa creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tarifa' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Tipo de vehículo o de estadía no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /tarifas/vigente:
+    get:
+      tags: [Tarifas]
+      summary: Tarifa vigente para un tipo de vehículo y de estadía
+      description: La de mayor `fechaDesde` que no supere la fecha indicada (por defecto, ahora).
+      parameters:
+        - { in: query, name: tipoVehiculoId, required: true, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: tipoEstadiaId, required: true, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: fecha, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Tarifa vigente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tarifa' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tarifas/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Tarifas]
+      summary: Obtiene una tarifa
+      responses:
+        '200':
+          description: Tarifa
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tarifa' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Tarifas]
+      summary: Modifica una tarifa que todavía no está vigente (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualizarTarifaInput' }
+      responses:
+        '200':
+          description: Tarifa modificada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tarifa' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La tarifa ya está vigente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Tarifas]
+      summary: Elimina una tarifa que todavía no está vigente (ADMIN)
+      responses:
+        '204': { description: Tarifa eliminada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La tarifa ya está vigente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /playas:
+    get:
+      tags: [Playas]
+      summary: Lista las playas
+      responses:
+        '200':
+          description: Playas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Playa' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Playas]
+      summary: Crea una playa (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlayaInput' }
+      responses:
+        '201':
+          description: Playa creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Playa' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /playas/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Playas]
+      summary: Obtiene una playa
+      responses:
+        '200':
+          description: Playa
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Playa' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Playas]
+      summary: Modifica una playa (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlayaInput' }
+      responses:
+        '200':
+          description: Playa modificada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Playa' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Playas]
+      summary: Elimina una playa (ADMIN)
+      responses:
+        '204': { description: Playa eliminada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La playa tiene cocheras
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /playas/{id}/cocheras:
+    get:
+      tags: [Playas]
+      summary: Listado de cocheras de una playa, con filtros
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - in: query
+          name: estado
+          schema: { $ref: '#/components/schemas/EstadoCochera' }
+        - in: query
+          name: techada
+          schema: { type: string, enum: ['true', 'false'] }
+      responses:
+        '200':
+          description: Cocheras de la playa
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Cochera' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /cocheras:
+    get:
+      tags: [Cocheras]
+      summary: Lista todas las cocheras
+      responses:
+        '200':
+          description: Cocheras
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Cochera' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Cocheras]
+      summary: Crea una cochera (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CrearCocheraInput' }
+      responses:
+        '201':
+          description: Cochera creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CocheraBase' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: La playa no existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cocheras/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Cocheras]
+      summary: Obtiene una cochera
+      responses:
+        '200':
+          description: Cochera
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cochera' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Cocheras]
+      summary: Modifica una cochera (ADMIN, solo los campos enviados)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualizarCocheraInput' }
+      responses:
+        '200':
+          description: Cochera modificada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CocheraBase' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Cocheras]
+      summary: Elimina una cochera (ADMIN)
+      responses:
+        '204': { description: Cochera eliminada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La cochera tiene reservas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /reservas:
+    get:
+      tags: [Reservas]
+      summary: Listado de reservas con filtros
+      description: Un CLIENTE recibe solo las suyas (se ignora `usuarioId`).
+      parameters:
+        - in: query
+          name: estado
+          schema: { $ref: '#/components/schemas/EstadoReserva' }
+        - { in: query, name: usuarioId, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: cocheraId, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Reservas, de la más reciente a la más antigua
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Reserva' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Reservas]
+      summary: 'CU1: crea una reserva'
+      description: |
+        Valida que la fecha de inicio no esté en el pasado, que la cochera no esté inhabilitada
+        ni reservada en ese horario, y calcula el precio con la tarifa vigente:
+        `valor * ceil(minutos de la reserva / duracionMinutos del tipo de estadía)`.
+        La reserva queda `PENDIENTE`. Un ADMIN debe indicar `usuarioId` (un CLIENTE);
+        si reserva un CLIENTE, queda a su nombre.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CrearReservaInput' }
+      responses:
+        '201':
+          description: Reserva creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reserva' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Cochera, usuario, tipo de vehículo o tipo de estadía no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Cochera inhabilitada o reservada en ese horario, o sin tarifa vigente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /reservas/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Reservas]
+      summary: Detalle de una reserva (usuario, cochera, playa, tipos y pago)
+      responses:
+        '200':
+          description: Reserva
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reserva' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Reservas]
+      summary: Modifica la patente de una reserva pendiente
+      description: Fechas, cochera y tipos se cambian con los casos de uso (reprogramar).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patente]
+              properties:
+                patente: { $ref: '#/components/schemas/Patente' }
+      responses:
+        '200':
+          description: Reserva modificada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reserva' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La reserva no está pendiente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Reservas]
+      summary: Elimina una reserva pendiente o cancelada (ADMIN)
+      responses:
+        '204': { description: Reserva eliminada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La reserva no está pendiente ni cancelada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /reservas/{id}/reprogramar:
+    post:
+      tags: [Reservas]
+      summary: 'CU3: reprograma una reserva pendiente'
+      description: |
+        Cambia las fechas, revalida la disponibilidad (si la cochera está ocupada en el nuevo
+        horario se reasigna otra libre) y recalcula el precio con la tarifa vigente.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RangoFechas' }
+      responses:
+        '200':
+          description: Reserva reprogramada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reserva' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: No está pendiente, no hay cocheras libres o no hay tarifa vigente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /reservas/{id}/aprobar:
+    post:
+      tags: [Reservas]
+      summary: Aprueba una reserva pendiente (ADMIN)
+      description: '`PENDIENTE -> ACTIVA`.'
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Reserva aprobada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reserva' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: No está pendiente, está vencida o la cochera está inhabilitada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /reservas/{id}/pagar:
+    post:
+      tags: [Reservas]
+      summary: 'CU2: registra el pago de una reserva activa (ADMIN)'
+      description: Crea el pago por el precio total de la reserva y la pasa a `PAGADA`.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metodo]
+              properties:
+                metodo: { $ref: '#/components/schemas/MetodoPago' }
+      responses:
+        '200':
+          description: Reserva pagada (incluye el pago)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reserva' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: La reserva no está activa
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /reservas/{id}/cancelar:
+    post:
+      tags: [Reservas]
+      summary: Cancela una reserva pendiente o activa
+      description: Un ADMIN puede cancelar en cualquier momento; un CLIENTE, solo antes de la fecha de inicio.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Reserva cancelada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reserva' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: No está pendiente ni activa, o ya empezó (CLIENTE)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /pagos:
+    get:
+      tags: [Pagos]
+      summary: Lista los pagos
+      responses:
+        '200':
+          description: Pagos con su reserva
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PagoConReserva' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Pagos]
+      summary: Crea un pago
+      description: Para el flujo normal usar `POST /reservas/{id}/pagar`, que además cambia el estado de la reserva.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CrearPagoInput' }
+      responses:
+        '201':
+          description: Pago creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pago' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: La reserva no existe o ya tiene un pago
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /pagos/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Pagos]
+      summary: Obtiene un pago
+      responses:
+        '200':
+          description: Pago con su reserva
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagoConReserva' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Pagos]
+      summary: Modifica un pago (solo los campos enviados)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualizarPagoInput' }
+      responses:
+        '200':
+          description: Pago modificado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pago' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Pagos]
+      summary: Elimina un pago
+      responses:
+        '204': { description: Pago eliminado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sesion
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    SetCookieSesion:
+      description: 'Token JWT: `sesion=<token>; HttpOnly; SameSite=Lax; Path=/`'
+      schema: { type: string }
+
+  parameters:
+    Id:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    BadRequest:
+      description: Datos inválidos (`details` tiene los errores por campo)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              message: Datos invalidos
+              details: { email: ['Email invalido'] }
+    Unauthorized:
+      description: Sin sesión o sesión vencida
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: Debe iniciar sesion } }
+    Forbidden:
+      description: El rol no tiene permiso
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: No tiene permisos para realizar esta accion } }
+    NotFound:
+      description: No existe
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: Recurso no encontrado } }
+    Conflict:
+      description: Ya existe un registro con esos datos
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { message: Ya existe un registro con esos datos } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message: { type: string }
+            details: {}
+
+    Rol:
+      type: string
+      enum: [ADMIN, CLIENTE]
+    EstadoReserva:
+      type: string
+      enum: [PENDIENTE, ACTIVA, PAGADA, CANCELADA]
+    EstadoCochera:
+      type: string
+      enum: [DISPONIBLE, INHABILITADA]
+    MetodoPago:
+      type: string
+      enum: [EFECTIVO, TARJETA, TRANSFERENCIA]
+    Patente:
+      type: string
+      description: Patente vieja (ABC123) o Mercosur (AB123CD). Se ignoran espacios y guiones.
+      example: AB123CD
+    Timestamps:
+      type: object
+      properties:
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Usuario:
+      type: object
+      properties:
+        id: { type: integer }
+        nombre: { type: string }
+        telefono: { type: string, nullable: true }
+        dni: { type: string }
+        email: { type: string, format: email }
+        rol: { $ref: '#/components/schemas/Rol' }
+    SesionResponse:
+      type: object
+      properties:
+        usuario: { $ref: '#/components/schemas/Usuario' }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, example: admin@dsw.com }
+        password: { type: string, example: dsw12345 }
+    RegistrarInput:
+      type: object
+      required: [nombre, dni, email, password]
+      properties:
+        nombre: { type: string, maxLength: 100 }
+        telefono: { type: string, minLength: 6, maxLength: 20, nullable: true }
+        dni: { type: string, pattern: '^\d{7,8}$' }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 72 }
+    CrearUsuarioInput:
+      allOf:
+        - $ref: '#/components/schemas/RegistrarInput'
+        - type: object
+          properties:
+            rol:
+              allOf: [{ $ref: '#/components/schemas/Rol' }]
+              default: CLIENTE
+    ActualizarUsuarioInput:
+      type: object
+      description: Todos los campos son opcionales
+      properties:
+        nombre: { type: string, maxLength: 100 }
+        telefono: { type: string, minLength: 6, maxLength: 20, nullable: true }
+        dni: { type: string, pattern: '^\d{7,8}$' }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 72 }
+        rol: { $ref: '#/components/schemas/Rol' }
+
+    TipoVehiculo:
+      type: object
+      properties:
+        id: { type: integer }
+        tipo: { type: string, example: AUTO }
+    TipoVehiculoInput:
+      type: object
+      required: [tipo]
+      properties:
+        tipo: { type: string, maxLength: 50, description: Se guarda en mayúsculas }
+
+    TipoEstadia:
+      type: object
+      properties:
+        id: { type: integer }
+        tipo: { type: string, example: Por hora }
+        duracionMinutos: { type: integer, example: 60 }
+    TipoEstadiaInput:
+      type: object
+      required: [tipo, duracionMinutos]
+      properties:
+        tipo: { type: string, maxLength: 50, description: Se guarda en mayúsculas }
+        duracionMinutos: { type: integer, minimum: 1 }
+    ActualizarTipoEstadiaInput:
+      type: object
+      properties:
+        tipo: { type: string, maxLength: 50 }
+        duracionMinutos: { type: integer, minimum: 1 }
+
+    Tarifa:
+      type: object
+      properties:
+        id: { type: integer }
+        valor: { type: number, example: 1500 }
+        fechaDesde: { type: string, format: date-time }
+        tipoVehiculo: { $ref: '#/components/schemas/TipoVehiculo' }
+        tipoEstadia: { $ref: '#/components/schemas/TipoEstadia' }
+    CrearTarifaInput:
+      type: object
+      required: [valor, fechaDesde, tipoVehiculoId, tipoEstadiaId]
+      properties:
+        valor: { type: number, minimum: 0.01, multipleOf: 0.01 }
+        fechaDesde: { type: string, format: date-time, description: Debe ser futura }
+        tipoVehiculoId: { type: integer, minimum: 1 }
+        tipoEstadiaId: { type: integer, minimum: 1 }
+    ActualizarTarifaInput:
+      type: object
+      properties:
+        valor: { type: number, minimum: 0.01, multipleOf: 0.01 }
+        fechaDesde: { type: string, format: date-time }
+        tipoVehiculoId: { type: integer, minimum: 1 }
+        tipoEstadiaId: { type: integer, minimum: 1 }
+
+    Playa:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer }
+            sector: { type: string, example: A }
+        - $ref: '#/components/schemas/Timestamps'
+    PlayaInput:
+      type: object
+      required: [sector]
+      properties:
+        sector: { type: string, minLength: 1 }
+
+    CocheraBase:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer }
+            techada: { type: boolean }
+            estado: { $ref: '#/components/schemas/EstadoCochera' }
+            playaId: { type: integer }
+        - $ref: '#/components/schemas/Timestamps'
+    Cochera:
+      allOf:
+        - $ref: '#/components/schemas/CocheraBase'
+        - type: object
+          properties:
+            playa: { $ref: '#/components/schemas/Playa' }
+            ocupada:
+              type: boolean
+              description: Tiene ahora una reserva ACTIVA o PAGADA en curso (no se guarda, se calcula)
+    CrearCocheraInput:
+      type: object
+      required: [techada, playaId]
+      properties:
+        techada: { type: boolean }
+        estado:
+          allOf: [{ $ref: '#/components/schemas/EstadoCochera' }]
+          default: DISPONIBLE
+        playaId: { type: integer, minimum: 1 }
+    ActualizarCocheraInput:
+      type: object
+      properties:
+        techada: { type: boolean }
+        estado: { $ref: '#/components/schemas/EstadoCochera' }
+        playaId: { type: integer, minimum: 1 }
+
+    RangoFechas:
+      type: object
+      required: [fechaInicio, fechaFin]
+      properties:
+        fechaInicio: { type: string, format: date-time, description: No puede estar en el pasado }
+        fechaFin: { type: string, format: date-time, description: Posterior a fechaInicio }
+    CrearReservaInput:
+      allOf:
+        - $ref: '#/components/schemas/RangoFechas'
+        - type: object
+          required: [patente, cocheraId, tipoVehiculoId, tipoEstadiaId]
+          properties:
+            patente: { $ref: '#/components/schemas/Patente' }
+            usuarioId:
+              type: integer
+              minimum: 1
+              description: Obligatorio si reserva un ADMIN; se ignora si reserva un CLIENTE
+            cocheraId: { type: integer, minimum: 1 }
+            tipoVehiculoId: { type: integer, minimum: 1 }
+            tipoEstadiaId: { type: integer, minimum: 1 }
+    Reserva:
+      type: object
+      properties:
+        id: { type: integer }
+        patente: { type: string }
+        fechaInicio: { type: string, format: date-time }
+        fechaFin: { type: string, format: date-time }
+        precioTotal: { type: number }
+        estado: { $ref: '#/components/schemas/EstadoReserva' }
+        usuario:
+          type: object
+          properties:
+            id: { type: integer }
+            nombre: { type: string }
+            dni: { type: string }
+            email: { type: string }
+            telefono: { type: string, nullable: true }
+        cochera:
+          type: object
+          properties:
+            id: { type: integer }
+            techada: { type: boolean }
+            estado: { $ref: '#/components/schemas/EstadoCochera' }
+            playa:
+              type: object
+              properties:
+                id: { type: integer }
+                sector: { type: string }
+        tipoVehiculo: { $ref: '#/components/schemas/TipoVehiculo' }
+        tipoEstadia: { $ref: '#/components/schemas/TipoEstadia' }
+        pago:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            fecha: { type: string, format: date-time }
+            metodo: { $ref: '#/components/schemas/MetodoPago' }
+            monto: { type: number }
+
+    Pago:
+      allOf:
+        - type: object
+          properties:
+            id: { type: integer }
+            fecha: { type: string, format: date-time }
+            metodo: { $ref: '#/components/schemas/MetodoPago' }
+            monto: { type: string, description: Decimal serializado como texto, example: '1500.00' }
+            reservaId: { type: integer }
+        - $ref: '#/components/schemas/Timestamps'
+    PagoConReserva:
+      allOf:
+        - $ref: '#/components/schemas/Pago'
+        - type: object
+          properties:
+            reserva:
+              type: object
+              description: Reserva tal como está en la base (con sus ids de relaciones)
+              properties:
+                id: { type: integer }
+                patente: { type: string }
+                fechaInicio: { type: string, format: date-time }
+                fechaFin: { type: string, format: date-time }
+                precioTotal: { type: string, example: '1500.00' }
+                estado: { $ref: '#/components/schemas/EstadoReserva' }
+                usuarioId: { type: integer }
+                cocheraId: { type: integer }
+                tipoVehiculoId: { type: integer }
+                tipoEstadiaId: { type: integer }
+    CrearPagoInput:
+      type: object
+      required: [metodo, monto, reservaId]
+      properties:
+        fecha: { type: string, format: date-time, description: 'Por defecto, ahora' }
+        metodo: { $ref: '#/components/schemas/MetodoPago' }
+        monto: { type: number, minimum: 0.01 }
+        reservaId: { type: integer, minimum: 1 }
+    ActualizarPagoInput:
+      type: object
+      properties:
+        fecha: { type: string, format: date-time }
+        metodo: { $ref: '#/components/schemas/MetodoPago' }
+        monto: { type: number, minimum: 0.01 }
