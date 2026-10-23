@@ -12,7 +12,6 @@ import {
   reprogramarReservaSchema,
 } from './reserva.schema.js';
 
-
 export const reservaRouter = Router();
 
 // ADMIN gestiona todas las reservas; un CLIENTE solo las suyas (lo controla el service)
@@ -45,9 +44,9 @@ reservaRouter.post(
   validate({ params: idParamSchema }),
   reservaController.aprobar,
 );
+
 reservaRouter.post(
   '/:id/pagar',
-  authorize(Rol.ADMIN),
   validate({ params: idParamSchema, body: registrarPagoSchema }),
   reservaController.registrarPago,
 );

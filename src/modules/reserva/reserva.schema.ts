@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { EstadoReserva } from '../../generated/prisma/client.js';
-import { metodoPagoManualSchema } from '../pago/pago.schema.js';
 
 const id = z.number().int().positive();
 
@@ -50,9 +49,11 @@ export type ActualizarReservaInput = z.infer<typeof actualizarReservaSchema>;
 export type ReprogramarReservaInput = z.infer<typeof reprogramarReservaSchema>;
 export type ListarReservasQuery = z.infer<typeof listarReservasQuerySchema>;
 
-// Los pagos online no se registran a mano: los crea el checkout
+// EFECTIVO y TRANSFERENCIA los registra el ADMIN; ONLINE inicia el checkout del proveedor
 export const registrarPagoSchema = z.object({
-  metodo: metodoPagoManualSchema,
+  metodo: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'ONLINE'], {
+    error: 'El método debe ser EFECTIVO, TRANSFERENCIA u ONLINE',
+  }),
 });
 
 export type RegistrarPagoInput = z.infer<typeof registrarPagoSchema>;

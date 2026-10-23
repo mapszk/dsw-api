@@ -46,5 +46,11 @@ export async function aprobar(_req: Request, res: Response) {
 
 export async function registrarPago(req: Request, res: Response) {
   const data = req.body as RegistrarPagoInput;
-  res.json(toReservaDto(await reservaService.registrarPago(res.locals.params.id, data)));
+  const { reserva, initPoint } = await reservaService.registrarPago(
+    res.locals.params.id,
+    data,
+    res.locals.usuario,
+  );
+  // initPoint solo en pagos ONLINE: link al checkout del proveedor
+  res.json({ ...toReservaDto(reserva), initPoint });
 }

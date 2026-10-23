@@ -12,6 +12,8 @@ const db = vi.hoisted(() => ({
     delete: vi.fn(),
   },
   reserva: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  // SELECT ... FOR UPDATE de la reserva
+  $queryRaw: vi.fn(),
 }));
 
 vi.mock('../src/lib/prisma.js', () => ({

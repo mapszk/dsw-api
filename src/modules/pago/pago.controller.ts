@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { toPagoDto } from './pago.dto.js';
 import * as pagoService from './pago.service.js';
+import type { ProveedorPago } from './proveedor-pago.js';
 
 export const listar = async (_req: Request, res: Response) => {
   const pagos = await pagoService.listarPagos(res.locals.query);
@@ -28,4 +29,14 @@ export const eliminar = async (_req: Request, res: Response) => {
   const { id } = res.locals.params as { id: number };
   await pagoService.eliminarPago(id);
   res.status(204).send();
+};
+
+/**
+ * Aviso del proveedor. Responde 200 para que no lo reintente; si falla la consulta al
+ * proveedor o la base, responde 500 y el proveedor reintenta el aviso.
+ */
+export const webhook = (proveedor: ProveedorPago) => async (req: Request, res: Response) => {
+  const pagoExternoId = proveedor.leerAviso(req);
+  if (pagoExternoId) await pagoService.procesarAvisoOnline(proveedor, pagoExternoId);
+  res.status(200).end();
 };

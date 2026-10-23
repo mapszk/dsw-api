@@ -60,3 +60,13 @@ docker compose exec api npm run db:seed
 Con la API levantada, la documentación interactiva (Swagger UI) queda en http://localhost:3000/api/docs. La especificación OpenAPI está en [docs/openapi.yaml](docs/openapi.yaml).
 
 Para probar endpoints protegidos desde Swagger, primero ejecutar `POST /auth/login` (por ejemplo con `admin@dsw.com` / `dsw12345`): la cookie de sesión queda guardada y se usa en los siguientes pedidos.
+
+**6. Pagos con MercadoPago (opcional)**
+
+Sin credenciales la API funciona igual, pero iniciar un pago con MercadoPago responde 503. Para probarlo en local:
+
+1. En [MP Developers](https://www.mercadopago.com.ar/developers/panel) crear una aplicación y dos cuentas de prueba (vendedor y comprador).
+2. Con la cuenta vendedora, copiar el Access Token de prueba en `MP_ACCESS_TOKEN`.
+3. Exponer la API con un túnel (`ngrok http 3000`) y poner la URL pública, sin `/api`, en `API_PUBLIC_URL`.
+4. En la aplicación de MP, configurar el webhook de **Pagos** con `<API_PUBLIC_URL>/api/webhooks/mercadopago` y copiar la clave secreta en `MP_WEBHOOK_SECRET`.
+5. Reiniciar la API, iniciar el pago de una reserva activa (`POST /reservas/{id}/pagar` con `{ "metodo": "ONLINE" }`) y pagar en el link devuelto con la cuenta compradora y las tarjetas de prueba de MP.
