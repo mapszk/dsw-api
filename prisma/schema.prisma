@@ -30,8 +30,16 @@ enum EstadoCochera {
 
 enum MetodoPago {
   EFECTIVO
-  TARJETA
   TRANSFERENCIA
+  MERCADOPAGO
+}
+
+// Los pagos manuales (efectivo, transferencia) se registran APROBADOS; los de MercadoPago
+// empiezan PENDIENTES y los actualiza el webhook
+enum EstadoPago {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
 }
 
 model Usuario {
@@ -139,14 +147,18 @@ model Reserva {
 }
 
 model Pago {
-  id        Int        @id @default(autoincrement())
-  fecha     DateTime   @default(now())
-  metodo    MetodoPago
-  monto     Decimal    @db.Decimal(10, 2)
-  reservaId Int        @unique @map("reserva_id")
-  reserva   Reserva    @relation(fields: [reservaId], references: [id])
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  id             Int        @id @default(autoincrement())
+  fecha          DateTime   @default(now())
+  metodo         MetodoPago
+  estado         EstadoPago @default(PENDIENTE)
+  monto          Decimal    @db.Decimal(10, 2)
+  // Solo para MERCADOPAGO: la preferencia (checkout) y el pago que informa el webhook
+  mpPreferenceId String?    @map("mp_preference_id")
+  mpPaymentId    String?    @unique @map("mp_payment_id")
+  reservaId      Int        @unique @map("reserva_id")
+  reserva        Reserva    @relation(fields: [reservaId], references: [id])
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
 
   @@map("pagos")
 }

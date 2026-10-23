@@ -55,7 +55,7 @@ describe('registrar pago de una reserva (CU2)', () => {
   it('falla si la reserva no existe', async () => {
     tx.reserva.findUnique.mockResolvedValue(null);
 
-    await expect(registrarPago(999, { metodo: 'TARJETA' })).rejects.toThrow(
+    await expect(registrarPago(999, { metodo: 'TRANSFERENCIA' })).rejects.toThrow(
       'Reserva no encontrada',
     );
     expect(tx.pago.create).not.toHaveBeenCalled();
