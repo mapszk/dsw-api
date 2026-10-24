@@ -132,24 +132,39 @@ export const actualizarPago = async (id: number, data: ActualizarPagoInput) => {
 };
 
 export const eliminarPago = async (id: number) => {
-  const pago = await obtenerPago(id);
-  if (pago.metodo === MetodoPago.ONLINE) {
-    // Anular un pago online aprobado requeriria un reembolso (fuera del alcance)
-    if (pago.estado === EstadoPago.APROBADO) {
-      throw HttpError.conflict('Un pago online aprobado no se puede eliminar');
-    }
-    await prisma.pago.delete({ where: { id } });
-    return;
-  }
+  const { reservaId } = await obtenerPago(id);
+  await prisma.$transaction(async (tx) => {
+    // Con la reserva bloqueada, el aviso del proveedor no puede aprobar el pago mientras se borra
+    await bloquearReserva(tx, reservaId);
+    const pago = await tx.pago.findUnique({ where: { id } });
+    if (!pago) throw HttpError.notFound('Pago no encontrado');
 
-  // Sin el pago manual, la reserva vuelve a estar pendiente de pago
-  await prisma.$transaction([
-    prisma.pago.delete({ where: { id } }),
-    prisma.reserva.updateMany({
-      where: { id: pago.reservaId, estado: EstadoReserva.PAGADA },
+    if (pago.metodo === MetodoPago.ONLINE) {
+      // Anular un pago online aprobado requeriria un reembolso (fuera del alcance)
+      if (pago.estado === EstadoPago.APROBADO) {
+        throw HttpError.conflict('Un pago online aprobado no se puede eliminar');
+      }
+      // Si el cliente todavia puede pagar o el proveedor lo esta procesando, el pago se puede
+      // aprobar despues: borrarlo dejaria un cobro sin registrar
+      if (pagoOnlineEnProceso(pago)) {
+        throw HttpError.conflict('La reserva tiene un pago online en proceso');
+      }
+      if (checkoutVigente(pago)) {
+        throw HttpError.conflict(
+          `La reserva tiene un pago online en curso: se puede eliminar cuando venza (${env.PAGO_ONLINE_VENCIMIENTO_MINUTOS} min desde que se inicio)`,
+        );
+      }
+      await tx.pago.delete({ where: { id } });
+      return;
+    }
+
+    // Sin el pago manual, la reserva vuelve a estar pendiente de pago
+    await tx.pago.delete({ where: { id } });
+    await tx.reserva.updateMany({
+      where: { id: reservaId, estado: EstadoReserva.PAGADA },
       data: { estado: EstadoReserva.ACTIVA },
-    }),
-  ]);
+    });
+  });
 };
 
 /** Reglas para iniciar un pago online, antes y despues de crear el checkout */

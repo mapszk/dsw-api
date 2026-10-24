@@ -212,8 +212,9 @@ describe('/api/pagos', () => {
       expect(db.pago.delete).not.toHaveBeenCalled();
     });
 
+    // pago() tiene fecha del 20/10 y sin pagoExternoId: un checkout que ya vencio
     it.each(['PENDIENTE', 'RECHAZADO'])(
-      'borra un pago online %s sin cambiar la reserva',
+      'borra un pago online %s ya vencido sin cambiar la reserva',
       async (estado) => {
         db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE', estado }));
 
@@ -224,5 +225,41 @@ describe('/api/pagos', () => {
         expect(db.reserva.updateMany).not.toHaveBeenCalled();
       },
     );
+
+    it('responde 409 si el checkout online sigue vigente', async () => {
+      db.pago.findUnique.mockResolvedValue(
+        pago({ metodo: 'ONLINE', estado: 'PENDIENTE', fecha: new Date() }),
+      );
+
+      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toContain('pago online en curso');
+      expect(db.pago.delete).not.toHaveBeenCalled();
+    });
+
+    it('responde 409 si el proveedor esta procesando el pago, aunque el checkout haya vencido', async () => {
+      db.pago.findUnique.mockResolvedValue(
+        pago({ metodo: 'ONLINE', estado: 'PENDIENTE', pagoExternoId: '123' }),
+      );
+
+      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe('La reserva tiene un pago online en proceso');
+      expect(db.pago.delete).not.toHaveBeenCalled();
+    });
+
+    it('bloquea la reserva antes de leer el pago', async () => {
+      db.pago.findUnique.mockResolvedValue(pago());
+
+      await request(app).delete('/api/pagos/1').set('Authorization', admin);
+
+      expect(db.$queryRaw).toHaveBeenCalled();
+      // La primera lectura es la de obtenerPago; la que decide es la segunda, ya bloqueada
+      expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        db.pago.findUnique.mock.invocationCallOrder[1],
+      );
+    });
   });
 });
