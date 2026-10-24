@@ -1,8 +1,15 @@
-import { EstadoCochera, EstadoReserva, Prisma, Rol } from '../../generated/prisma/client.js';
+import {
+  EstadoCochera,
+  EstadoReserva,
+  MetodoPago,
+  Prisma,
+  Rol,
+} from '../../generated/prisma/client.js';
 import { prisma } from '../../lib/prisma.js';
 import type { UsuarioAutenticado } from '../../middlewares/auth.js';
 import { HttpError } from '../../utils/http-error.js';
-import { registrarPagoManual } from '../pago/pago.service.js';
+import { mercadopago } from '../pago/mercadopago.service.js';
+import { iniciarPagoOnline, registrarPagoManual } from '../pago/pago.service.js';
 import type {
   ActualizarReservaInput,
   CrearReservaInput,
@@ -308,12 +315,30 @@ export async function aprobar(id: number) {
 }
 
 /**
- * CU2 Registrar pago: a partir de una reserva activa registra el Pago (efectivo o transferencia)
- * por el precio de la reserva, que pasa a PAGADA. Comparte las reglas con el CRUD de pagos.
+ * CU2 Registrar pago de una reserva activa, por su precio total.
+ * - EFECTIVO / TRANSFERENCIA: solo ADMIN. El Pago queda APROBADO y la reserva PAGADA
+ *   (mismas reglas que el CRUD de pagos).
+ * - ONLINE: ADMIN o el CLIENTE dueño. Crea el checkout de MercadoPago y deja el Pago PENDIENTE
+ *   hasta que avise el proveedor; devuelve el link al checkout en initPoint.
  */
-export function registrarPago(id: number, { metodo }: RegistrarPagoInput) {
-  return prisma.$transaction(async (tx) => {
+export async function registrarPago(
+  id: number,
+  { metodo }: RegistrarPagoInput,
+  solicitante: UsuarioAutenticado,
+) {
+  if (metodo === MetodoPago.ONLINE) {
+    const { initPoint } = await iniciarPagoOnline(mercadopago, id, solicitante);
+    return { reserva: await obtener(id), initPoint };
+  }
+
+  if (solicitante.rol !== Rol.ADMIN) {
+    throw HttpError.forbidden(
+      'Solo un administrador puede registrar pagos en efectivo o transferencia',
+    );
+  }
+  const reserva = await prisma.$transaction(async (tx) => {
     await registrarPagoManual(tx, id, { metodo });
     return tx.reserva.findUniqueOrThrow({ where: { id }, include });
   });
+  return { reserva };
 }

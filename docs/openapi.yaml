@@ -44,6 +44,12 @@ tags:
       Los `ONLINE` (procesados por un proveedor como MercadoPago) empiezan `PENDIENTE` y no se crean,
       editan ni eliminan (si están aprobados) desde acá.
       La reserva pasa a `PAGADA` solo con un pago `APROBADO`.
+  - name: MercadoPago
+    description: |
+      Pago online de una reserva `ACTIVA`: `POST /reservas/{id}/pagar` con `metodo: ONLINE` devuelve
+      el link de checkout (`initPoint`) y deja el pago `ONLINE` en `PENDIENTE`. Cuando MP avisa al
+      webhook, el pago pasa a `APROBADO` (y la reserva a `PAGADA`) o a `RECHAZADO`.
+      El frontend consulta el resultado con `GET /reservas/{id}`.
 
 paths:
   /health:
@@ -822,12 +828,25 @@ paths:
 
   /reservas/{id}/pagar:
     post:
-      tags: [Reservas]
-      summary: 'CU2: registra el pago de una reserva activa (ADMIN)'
+      tags: [Reservas, MercadoPago]
+      summary: 'CU2: registra o inicia el pago de una reserva activa'
       description: |
-        Registra un pago manual `APROBADO` por el precio total de la reserva y la pasa a `PAGADA`.
-        Si la reserva tenía un pago online pendiente o rechazado, lo reemplaza.
-        Usa las mismas reglas que `POST /pagos`.
+        El monto es siempre el precio total de la reserva (no se manda en el body).
+        - `EFECTIVO` / `TRANSFERENCIA` (solo ADMIN): registra un pago `APROBADO` y pasa la reserva a
+          `PAGADA`. Usa las mismas reglas que `POST /pagos`.
+        - `ONLINE` (ADMIN o el CLIENTE dueño): crea el checkout de MercadoPago y deja el pago en
+          `PENDIENTE`; la respuesta incluye `initPoint`, el link al checkout (fuera de producción, el
+          de sandbox). La reserva pasa a `PAGADA` cuando MP avisa al webhook que se aprobó.
+
+        El checkout vence a los `PAGO_ONLINE_VENCIMIENTO_MINUTOS` (15 por defecto).
+
+        Para no cobrar dos veces, mientras haya un pago online en curso:
+        - Si MP ya está procesando un pago (tarjeta en revisión, ticket en efectivo): 409 para todo
+          pago nuevo, hasta que MP lo apruebe, rechace o cancele.
+        - Si solo hay un checkout vigente sin pago: 409 para el pago manual hasta que venza; un
+          nuevo `ONLINE` lo reemplaza.
+
+        Un pago online rechazado o con el checkout vencido se reemplaza.
       parameters:
         - $ref: '#/components/parameters/Id'
       requestBody:
@@ -838,19 +857,38 @@ paths:
               type: object
               required: [metodo]
               properties:
-                metodo: { $ref: '#/components/schemas/MetodoPagoManual' }
+                metodo:
+                  type: string
+                  enum: [EFECTIVO, TRANSFERENCIA, ONLINE]
       responses:
         '200':
-          description: Reserva pagada (incluye el pago)
+          description: Reserva con su pago; en pagos `ONLINE` incluye `initPoint`
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Reserva' }
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Reserva'
+                  - type: object
+                    properties:
+                      initPoint:
+                        type: string
+                        format: uri
+                        description: Solo en pagos ONLINE
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403':
+          description: Un CLIENTE intenta registrar un pago manual o pagar una reserva de otro cliente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: La reserva no está activa o ya tiene un pago aprobado
+          description: La reserva no está activa, ya tiene un pago aprobado o tiene un pago online en curso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Faltan las credenciales de MercadoPago en la API (pago ONLINE)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -872,6 +910,31 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: No está pendiente ni activa, o ya empezó (CLIENTE)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /webhooks/mercadopago:
+    post:
+      tags: [MercadoPago]
+      summary: Aviso de MercadoPago (lo llama MP)
+      description: |
+        Público, validado con la firma `x-signature` y la clave secreta del webhook.
+        Solo procesa `type=payment`: consulta el pago en MP y actualiza el pago de la reserva
+        (`external_reference`). `approved` -> `APROBADO` y reserva `PAGADA`;
+        `rejected`/`cancelled` -> `RECHAZADO`; `pending`/`in_process` lo deja `PENDIENTE` y guarda el
+        id del pago de MP, que bloquea otros cobros hasta que se resuelva. Idempotente.
+      security: []
+      parameters:
+        - { name: data.id, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string } }
+        - { name: x-signature, in: header, required: true, schema: { type: string } }
+        - { name: x-request-id, in: header, schema: { type: string } }
+      responses:
+        '200':
+          description: Aviso recibido
+        '401':
+          description: Firma inválida
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

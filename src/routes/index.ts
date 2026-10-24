@@ -8,7 +8,7 @@ import { tipoVehiculoRouter } from '../modules/tipo-vehiculo/tipo-vehiculo.route
 import { usuarioRouter } from '../modules/usuario/usuario.routes.js';
 import { playaRouter } from '../modules/playas/playa.routes.js';
 import { cocheraRouter } from '../modules/cochera/cochera.routes.js';
-import { pagoRouter } from '../modules/pago/pago.routes.js';
+import { pagoRouter, webhookRouter } from '../modules/pago/pago.routes.js';
 
 export const router = Router();
 
@@ -25,3 +25,4 @@ router.use('/usuarios', usuarioRouter);
 router.use('/reservas', reservaRouter);
 router.use('/cocheras', cocheraRouter);
 router.use('/pagos', pagoRouter);
+router.use('/webhooks', webhookRouter);
