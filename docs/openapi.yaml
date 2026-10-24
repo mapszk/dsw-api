@@ -1032,18 +1032,17 @@ paths:
       tags: [Pagos]
       summary: Elimina un pago
       description: |
-        Un pago manual se elimina y la reserva vuelve a `ACTIVA` (en una transacción).
-        Un pago online `PENDIENTE` o `RECHAZADO` se elimina sin cambiar la reserva, salvo que siga
-        en curso: con el checkout vigente o mientras el proveedor procesa el pago no se puede
-        eliminar, porque se podría aprobar después. Uno `APROBADO` no se puede eliminar (requeriría
-        un reembolso).
+        Solo se eliminan los pagos en efectivo o transferencia, que registra el ADMIN a mano: el pago
+        se elimina y la reserva vuelve a `ACTIVA` (en una transacción). Los pagos `ONLINE` quedan
+        como historial del proveedor (si hace falta cobrar de nuevo, el pago se reemplaza) y los de
+        `TARJETA`, como historial.
       responses:
         '204': { description: Pago eliminado }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Es un pago online aprobado o todavía en curso
+          description: El pago no es en efectivo ni transferencia
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

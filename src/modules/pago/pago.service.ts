@@ -131,31 +131,19 @@ export const actualizarPago = async (id: number, data: ActualizarPagoInput) => {
   return prisma.pago.update({ where: { id }, data, include });
 };
 
+// Solo se eliminan los pagos que el ADMIN registra a mano. Los online quedan como historial del
+// proveedor (si hace falta cobrar de nuevo, el pago se reemplaza) y los de tarjeta, como historial
+const METODOS_ELIMINABLES: MetodoPago[] = [MetodoPago.EFECTIVO, MetodoPago.TRANSFERENCIA];
+
 export const eliminarPago = async (id: number) => {
   const { reservaId } = await obtenerPago(id);
   await prisma.$transaction(async (tx) => {
-    // Con la reserva bloqueada, el aviso del proveedor no puede aprobar el pago mientras se borra
+    // Con la reserva bloqueada, el pago no puede cambiar mientras se borra
     await bloquearReserva(tx, reservaId);
     const pago = await tx.pago.findUnique({ where: { id } });
     if (!pago) throw HttpError.notFound('Pago no encontrado');
-
-    if (pago.metodo === MetodoPago.ONLINE) {
-      // Anular un pago online aprobado requeriria un reembolso (fuera del alcance)
-      if (pago.estado === EstadoPago.APROBADO) {
-        throw HttpError.conflict('Un pago online aprobado no se puede eliminar');
-      }
-      // Si el cliente todavia puede pagar o el proveedor lo esta procesando, el pago se puede
-      // aprobar despues: borrarlo dejaria un cobro sin registrar
-      if (pagoOnlineEnProceso(pago)) {
-        throw HttpError.conflict('La reserva tiene un pago online en proceso');
-      }
-      if (checkoutVigente(pago)) {
-        throw HttpError.conflict(
-          `La reserva tiene un pago online en curso: se puede eliminar cuando venza (${env.PAGO_ONLINE_VENCIMIENTO_MINUTOS} min desde que se inicio)`,
-        );
-      }
-      await tx.pago.delete({ where: { id } });
-      return;
+    if (!METODOS_ELIMINABLES.includes(pago.metodo)) {
+      throw HttpError.conflict('Solo se pueden eliminar pagos en efectivo o transferencia');
     }
 
     // Sin el pago manual, la reserva vuelve a estar pendiente de pago

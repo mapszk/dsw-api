@@ -190,64 +190,39 @@ describe('/api/pagos', () => {
   });
 
   describe('DELETE', () => {
-    it('borra un pago manual y la reserva vuelve a ACTIVA', async () => {
-      db.pago.findUnique.mockResolvedValue(pago());
-
-      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
-
-      expect(res.status).toBe(204);
-      expect(db.pago.delete).toHaveBeenCalledWith({ where: { id: 1 } });
-      expect(db.reserva.updateMany).toHaveBeenCalledWith({
-        where: { id: 10, estado: 'PAGADA' },
-        data: { estado: 'ACTIVA' },
-      });
-    });
-
-    it('responde 409 con un pago online aprobado', async () => {
-      db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE' }));
-
-      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
-
-      expect(res.status).toBe(409);
-      expect(db.pago.delete).not.toHaveBeenCalled();
-    });
-
-    // pago() tiene fecha del 20/10 y sin pagoExternoId: un checkout que ya vencio
-    it.each(['PENDIENTE', 'RECHAZADO'])(
-      'borra un pago online %s ya vencido sin cambiar la reserva',
-      async (estado) => {
-        db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE', estado }));
+    it.each(['EFECTIVO', 'TRANSFERENCIA'])(
+      'borra un pago en %s y la reserva vuelve a ACTIVA',
+      async (metodo) => {
+        db.pago.findUnique.mockResolvedValue(pago({ metodo }));
 
         const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
 
         expect(res.status).toBe(204);
         expect(db.pago.delete).toHaveBeenCalledWith({ where: { id: 1 } });
-        expect(db.reserva.updateMany).not.toHaveBeenCalled();
+        expect(db.reserva.updateMany).toHaveBeenCalledWith({
+          where: { id: 10, estado: 'PAGADA' },
+          data: { estado: 'ACTIVA' },
+        });
       },
     );
 
-    it('responde 409 si el checkout online sigue vigente', async () => {
-      db.pago.findUnique.mockResolvedValue(
-        pago({ metodo: 'ONLINE', estado: 'PENDIENTE', fecha: new Date() }),
-      );
+    // Los online quedan como historial del proveedor; los de tarjeta, como historial
+    it.each([
+      ['ONLINE', 'APROBADO'],
+      ['ONLINE', 'PENDIENTE'],
+      ['ONLINE', 'RECHAZADO'],
+      ['TARJETA', 'APROBADO'],
+    ])('responde 409 con un pago %s %s', async (metodo, estado) => {
+      db.pago.findUnique.mockResolvedValue(pago({ metodo, estado }));
 
       const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
 
       expect(res.status).toBe(409);
-      expect(res.body.error.message).toContain('pago online en curso');
-      expect(db.pago.delete).not.toHaveBeenCalled();
-    });
-
-    it('responde 409 si el proveedor esta procesando el pago, aunque el checkout haya vencido', async () => {
-      db.pago.findUnique.mockResolvedValue(
-        pago({ metodo: 'ONLINE', estado: 'PENDIENTE', pagoExternoId: '123' }),
+      expect(res.body.error.message).toBe(
+        'Solo se pueden eliminar pagos en efectivo o transferencia',
       );
-
-      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
-
-      expect(res.status).toBe(409);
-      expect(res.body.error.message).toBe('La reserva tiene un pago online en proceso');
       expect(db.pago.delete).not.toHaveBeenCalled();
+      expect(db.reserva.updateMany).not.toHaveBeenCalled();
     });
 
     it('bloquea la reserva antes de leer el pago', async () => {
