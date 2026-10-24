@@ -190,39 +190,51 @@ describe('/api/pagos', () => {
   });
 
   describe('DELETE', () => {
-    it('borra un pago manual y la reserva vuelve a ACTIVA', async () => {
-      db.pago.findUnique.mockResolvedValue(pago());
-
-      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
-
-      expect(res.status).toBe(204);
-      expect(db.pago.delete).toHaveBeenCalledWith({ where: { id: 1 } });
-      expect(db.reserva.updateMany).toHaveBeenCalledWith({
-        where: { id: 10, estado: 'PAGADA' },
-        data: { estado: 'ACTIVA' },
-      });
-    });
-
-    it('responde 409 con un pago online aprobado', async () => {
-      db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE' }));
-
-      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
-
-      expect(res.status).toBe(409);
-      expect(db.pago.delete).not.toHaveBeenCalled();
-    });
-
-    it.each(['PENDIENTE', 'RECHAZADO'])(
-      'borra un pago online %s sin cambiar la reserva',
-      async (estado) => {
-        db.pago.findUnique.mockResolvedValue(pago({ metodo: 'ONLINE', estado }));
+    it.each(['EFECTIVO', 'TRANSFERENCIA'])(
+      'borra un pago en %s y la reserva vuelve a ACTIVA',
+      async (metodo) => {
+        db.pago.findUnique.mockResolvedValue(pago({ metodo }));
 
         const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
 
         expect(res.status).toBe(204);
         expect(db.pago.delete).toHaveBeenCalledWith({ where: { id: 1 } });
-        expect(db.reserva.updateMany).not.toHaveBeenCalled();
+        expect(db.reserva.updateMany).toHaveBeenCalledWith({
+          where: { id: 10, estado: 'PAGADA' },
+          data: { estado: 'ACTIVA' },
+        });
       },
     );
+
+    // Los online quedan como historial del proveedor; los de tarjeta, como historial
+    it.each([
+      ['ONLINE', 'APROBADO'],
+      ['ONLINE', 'PENDIENTE'],
+      ['ONLINE', 'RECHAZADO'],
+      ['TARJETA', 'APROBADO'],
+    ])('responde 409 con un pago %s %s', async (metodo, estado) => {
+      db.pago.findUnique.mockResolvedValue(pago({ metodo, estado }));
+
+      const res = await request(app).delete('/api/pagos/1').set('Authorization', admin);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe(
+        'Solo se pueden eliminar pagos en efectivo o transferencia',
+      );
+      expect(db.pago.delete).not.toHaveBeenCalled();
+      expect(db.reserva.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('bloquea la reserva antes de leer el pago', async () => {
+      db.pago.findUnique.mockResolvedValue(pago());
+
+      await request(app).delete('/api/pagos/1').set('Authorization', admin);
+
+      expect(db.$queryRaw).toHaveBeenCalled();
+      // La primera lectura es la de obtenerPago; la que decide es la segunda, ya bloqueada
+      expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        db.pago.findUnique.mock.invocationCallOrder[1],
+      );
+    });
   });
 });

@@ -131,25 +131,28 @@ export const actualizarPago = async (id: number, data: ActualizarPagoInput) => {
   return prisma.pago.update({ where: { id }, data, include });
 };
 
-export const eliminarPago = async (id: number) => {
-  const pago = await obtenerPago(id);
-  if (pago.metodo === MetodoPago.ONLINE) {
-    // Anular un pago online aprobado requeriria un reembolso (fuera del alcance)
-    if (pago.estado === EstadoPago.APROBADO) {
-      throw HttpError.conflict('Un pago online aprobado no se puede eliminar');
-    }
-    await prisma.pago.delete({ where: { id } });
-    return;
-  }
+// Solo se eliminan los pagos que el ADMIN registra a mano. Los online quedan como historial del
+// proveedor (si hace falta cobrar de nuevo, el pago se reemplaza) y los de tarjeta, como historial
+const METODOS_ELIMINABLES: MetodoPago[] = [MetodoPago.EFECTIVO, MetodoPago.TRANSFERENCIA];
 
-  // Sin el pago manual, la reserva vuelve a estar pendiente de pago
-  await prisma.$transaction([
-    prisma.pago.delete({ where: { id } }),
-    prisma.reserva.updateMany({
-      where: { id: pago.reservaId, estado: EstadoReserva.PAGADA },
+export const eliminarPago = async (id: number) => {
+  const { reservaId } = await obtenerPago(id);
+  await prisma.$transaction(async (tx) => {
+    // Con la reserva bloqueada, el pago no puede cambiar mientras se borra
+    await bloquearReserva(tx, reservaId);
+    const pago = await tx.pago.findUnique({ where: { id } });
+    if (!pago) throw HttpError.notFound('Pago no encontrado');
+    if (!METODOS_ELIMINABLES.includes(pago.metodo)) {
+      throw HttpError.conflict('Solo se pueden eliminar pagos en efectivo o transferencia');
+    }
+
+    // Sin el pago manual, la reserva vuelve a estar pendiente de pago
+    await tx.pago.delete({ where: { id } });
+    await tx.reserva.updateMany({
+      where: { id: reservaId, estado: EstadoReserva.PAGADA },
       data: { estado: EstadoReserva.ACTIVA },
-    }),
-  ]);
+    });
+  });
 };
 
 /** Reglas para iniciar un pago online, antes y despues de crear el checkout */
